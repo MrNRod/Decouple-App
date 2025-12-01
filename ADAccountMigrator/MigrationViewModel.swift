@@ -7,6 +7,7 @@ class MigrationViewModel: ObservableObject {
     @Published var isComplete: Bool = false
     @Published var hasError: Bool = false
     @Published var progress: Double = 0.0
+    @Published var fullLogText: String = ""
     // Logic Flags
     private var isUserMobile = false
     private var isMachineBound = false
