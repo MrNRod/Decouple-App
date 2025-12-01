@@ -68,6 +68,7 @@ class MigrationViewModel: ObservableObject {
             self.steps.append(MigrationStep(name: "System is Clean (Local User / Not Bound)", command: "NO_OP"))
             DispatchQueue.main.async {
                 self.logToUI("No actions required.")
+                self.progress = 1.0
                 self.isComplete = true
             }
             return
