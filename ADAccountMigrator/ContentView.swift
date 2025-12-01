@@ -32,11 +32,14 @@ struct ContentView: View {
             }
             Divider()
             if showDetails {
-                TextEditor(text: .constant(viewModel.fullLogText))
-                    .font(.custom("Menlo", size: 10))
-                    .frame(height: 150)
-                    .background(Color.black.opacity(0.05))
-                    .cornerRadius(5)
+                TextEditor(text: Binding(
+                    get: { viewModel.fullLogText },
+                    set: { _ in }
+                ))
+                .font(.custom("Menlo", size: 10))
+                .frame(height: 150)
+                .background(Color.black.opacity(0.05))
+                .cornerRadius(5)
             }
             HStack {
                 Button(showDetails ? "Hide Log" : "Show Log") { withAnimation { showDetails.toggle() } }
