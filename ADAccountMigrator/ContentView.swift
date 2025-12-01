@@ -32,11 +32,13 @@ struct ContentView: View {
             }
             Divider()
             if showDetails {
-                TextEditor(text: Binding(
-                    get: { viewModel.fullLogText },
-                    set: { _ in }
-                ))
-                .font(.custom("Menlo", size: 10))
+                ScrollView {
+                    Text(viewModel.fullLogText)
+                        .font(.custom("Menlo", size: 10))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(5)
+                }
                 .frame(height: 150)
                 .background(Color.black.opacity(0.05))
                 .cornerRadius(5)
