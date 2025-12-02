@@ -59,7 +59,7 @@ struct ContentView: View {
             .padding(.bottom)
         }
         .padding()
-        .frame(width: 500, height: 600)
+        .frame(width: 500, height: 500)
         .interactiveDismissDisabled(viewModel.isRunning)
     }
 }
