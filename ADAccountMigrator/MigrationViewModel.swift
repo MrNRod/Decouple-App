@@ -134,8 +134,9 @@ class MigrationViewModel: ObservableObject {
                     // Ignore benign errors
                     let isAttributeDeletion = step.command.contains("dscl . -delete")
                     let isUnbind = step.command.contains("dsconfigad")
-                    let isKill = step.command.contains("killall") // killall fails if service isn't running, which is fine
-                    if isAttributeDeletion || isUnbind || isKill {
+                    let isKill = step.command.contains("killall")
+                    let isPwPolicy = step.command.contains("pwpolicy")
+                    if isAttributeDeletion || isUnbind || isKill || isPwPolicy {
                          ScriptLogger.ScriptLogging("Non-Critical Error (Ignored): \(result.1)")
                          self.completeStep(index: index, output: "OK (Item missing or cleared)")
                     } else {
