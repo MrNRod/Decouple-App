@@ -1,13 +1,16 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+    "automatic-gradient" : "srgb:0.00000,0.32852,0.57488,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
           "blend-mode" : "normal",
-          "glass" : true,
+          "fill" : {
+            "solid" : "display-p3:0.86279,0.86279,0.85938,1.00000"
+          },
+          "glass" : false,
           "image-name" : "Person.png",
           "name" : "Person",
           "opacity" : 1,
@@ -32,6 +35,10 @@
     {
       "layers" : [
         {
+          "fill" : {
+            "solid" : "srgb:0.37056,0.37056,0.37056,1.00000"
+          },
+          "glass" : false,
           "image-name" : "Cloud.png",
           "name" : "Cloud",
           "position" : {
