@@ -96,7 +96,7 @@ class MigrationViewModel: ObservableObject {
             // 5. Permissions & Groups
             // Note: We use detectedHomeDir here, not the hardcoded path
             self.steps.append(MigrationStep(name: "Update Home Ownership (chown)", command: "chown -R \(ScriptConfig.User):staff \"\(detectedHomeDir)\""))
-            self.steps.append(MigrationStep(name: "Secure Home Permissions (chmod)", command: "chmod -R 755 \"\(detectedHomeDir)\"")) // 755 or 700 depending on preference
+            self.steps.append(MigrationStep(name: "Secure Home Permissions (chmod)", command: "chmod -R 750 \"\(detectedHomeDir)\"")) // 755 or 700 depending on preference
             self.steps.append(MigrationStep(name: "Add to Staff Group", command: "dseditgroup -o edit -a \(ScriptConfig.User) -t user staff"))
         }
         // Final Step: Hard Refresh of Directory Services
