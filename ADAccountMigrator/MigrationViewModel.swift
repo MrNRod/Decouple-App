@@ -193,20 +193,50 @@ class MigrationViewModel: ObservableObject {
             }
         }
     }
-    // MARK: - Special Logic: Fix Auth Authority
+    // MARK: - Special Logic: Fix Auth Authority (Nuclear Option)
     private func runFixAuthLogic() -> (Int32, String) {
         let currentAuth = Shell.execute("dscl . -read /Users/\(ScriptConfig.User) AuthenticationAuthority").1
-        if currentAuth.contains("Active Directory") || currentAuth.contains("LocalCachedUser") {
-            let components = currentAuth.components(separatedBy: .whitespacesAndNewlines)
-            for token in components {
-                // Must explicitly delete these tokens to convert account type
-                if token.contains("Active Directory") || token.contains("LocalCachedUser") {
-                     ScriptLogger.ScriptLogging("Removing Auth Token: \(token)")
-                     _ = Shell.execute("dscl . -delete /Users/\(ScriptConfig.User) AuthenticationAuthority \"\(token)\"")
-                }
+        
+        // 1. Capture the ShadowHash (The local password) and SecureToken
+        // Format: ;ShadowHash;HASHLIST:<SALTED-SHA512-PBKDF2...>
+        var shadowHashToken = ""
+        var secureToken = ""
+        let components = currentAuth.components(separatedBy: .whitespacesAndNewlines)
+        for token in components {
+            if token.contains(";ShadowHash;") {
+                shadowHashToken = token
+            }
+            if token.contains(";SecureToken;") {
+                secureToken = token
             }
         }
-        return (0, "Authority Cleaned")
+        
+        guard !shadowHashToken.isEmpty else {
+            return (1, "CRITICAL: Could not find local ShadowHash! Aborting Auth Fix to prevent lockout.")
+        }
+        
+        ScriptLogger.ScriptLogging("Captured ShadowHash. Proceeding with Nuclear Auth Fix...")
+        
+        // 2. Delete the ENTIRE AuthenticationAuthority attribute (Wipes AD, Kerberos, LocalCachedUser)
+        let deleteResult = Shell.execute("dscl . -delete /Users/\(ScriptConfig.User) AuthenticationAuthority")
+        if deleteResult.0 != 0 {
+            return (deleteResult.0, "Failed to delete old Authority: \(deleteResult.1)")
+        }
+        
+        // 3. Re-create AuthenticationAuthority with ShadowHash + SecureToken (if present)
+        // This makes the account purely local.
+        var newAuth = shadowHashToken
+        if !secureToken.isEmpty {
+            newAuth += " \(secureToken)"
+        }
+        
+        let createResult = Shell.execute("dscl . -create /Users/\(ScriptConfig.User) AuthenticationAuthority \"\(newAuth)\"")
+        
+        if createResult.0 == 0 {
+            return (0, "Nuclear Auth Fix: Success (Account is now Local)")
+        } else {
+            return (createResult.0, "Failed to write new Authority: \(createResult.1)")
+        }
     }
     // MARK: - Special Logic: Clean Search Paths
     private func runCleanSearchPaths() -> (Int32, String) {
