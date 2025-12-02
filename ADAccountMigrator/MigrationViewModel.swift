@@ -105,12 +105,14 @@ class MigrationViewModel: ObservableObject {
         // Scenario 3: Convert User (If Mobile)
         if isUserMobile {
             self.steps.append(MigrationStep(name: "Pre-Flight: Verify User Exists", command: "id -u \(ScriptConfig.User)"))
-            // 1. Remove Attributes
+            
+            // 1. Fix Auth Authority (Do this FIRST to stop AD binding behavior)
+            self.steps.append(MigrationStep(name: "Fix Authentication Authority", command: "func_FixAuthAuthority"))
+            
+            // 2. Remove Attributes
             for attribute in List {
                 self.steps.append(MigrationStep(name: "Remove Attribute: \(attribute)", command: "dscl . -delete /Users/\(ScriptConfig.User) \(attribute)"))
             }
-            // 2. Fix Auth Authority
-            self.steps.append(MigrationStep(name: "Fix Authentication Authority", command: "func_FixAuthAuthority"))
             // 3. Clear Password Policies (Critical for preventing lockout)
             // This removes AD-imposed rules like "change password every 90 days"
             self.steps.append(MigrationStep(name: "Clear Account Policies", command: "pwpolicy -n /Local/Default -u \(ScriptConfig.User) -clearaccountpolicies"))
@@ -166,9 +168,10 @@ class MigrationViewModel: ObservableObject {
                     let isKill = step.command.contains("killall")
                     let isPwPolicy = step.command.contains("pwpolicy")
                     let isChown = step.command.contains("chown")
+                    let isChmod = step.command.contains("chmod")
                     
-                    // SIP/TCC often blocks chown on specific Library folders even for root
-                    if isChown && result.1.contains("Operation not permitted") {
+                    // SIP/TCC often blocks chown/chmod on specific Library folders even for root
+                    if (isChown || isChmod) && result.1.contains("Operation not permitted") {
                          ScriptLogger.ScriptLogging("SIP/TCC Warning (Ignored): \(result.1)")
                          self.completeStep(index: index, output: "Success (Skipped protected files)")
                     } else if isAttributeDeletion || isUnbind || isKill || isPwPolicy {
