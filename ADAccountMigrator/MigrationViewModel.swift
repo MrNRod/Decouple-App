@@ -27,7 +27,17 @@ class MigrationViewModel: ObservableObject {
         "MCXSettings",
         "MCXFlags",
         "accountType",
-        "CopyTimestamp" // Often left behind by AD
+        "CopyTimestamp", // Often left behind by AD
+        "AltSecurityIdentities", // Kerberos principals often persist
+        "AppleMetaRecordName",
+        "PrimaryNTDomain",
+        "dsAttrTypeNative:account_instance",
+        "dsAttrTypeNative:cached_auth_policy",
+        "dsAttrTypeNative:cached_groups",
+        "dsAttrTypeNative:original_realname",
+        "dsAttrTypeNative:original_shell",
+        "dsAttrTypeNative:preserved_attributes",
+        "dsAttrTypeNative:accountPolicyData"
     ]
     init() {
         // 1. Determine User
@@ -44,6 +54,7 @@ class MigrationViewModel: ObservableObject {
         self.logToUI("Analyzing system state for user: \(ScriptConfig.User)...")
         // Check 1: Is User Mobile?
         let authCheck = Shell.execute("dscl . -read /Users/\(ScriptConfig.User) AuthenticationAuthority")
+        self.logToUI("Auth Authority Raw: \(authCheck.1)") // Debug Log
         self.isUserMobile = authCheck.1.contains("Active Directory") || authCheck.1.contains("LocalCachedUser")
         // Check 2: Is Machine Bound?
         let bindCheck = Shell.execute("dsconfigad -show")
@@ -98,6 +109,8 @@ class MigrationViewModel: ObservableObject {
             self.steps.append(MigrationStep(name: "Update Home Ownership (chown)", command: "chown -R \(ScriptConfig.User):staff \"\(detectedHomeDir)\""))
             self.steps.append(MigrationStep(name: "Secure Home Permissions (chmod)", command: "chmod -R 750 \"\(detectedHomeDir)\"")) // 755 or 700 depending on preference
             self.steps.append(MigrationStep(name: "Add to Staff Group", command: "dseditgroup -o edit -a \(ScriptConfig.User) -t user staff"))
+            // 6. Reset Primary Group ID to Staff (20)
+            self.steps.append(MigrationStep(name: "Reset PrimaryGroupID to 20", command: "dscl . -create /Users/\(ScriptConfig.User) PrimaryGroupID 20"))
         }
         // Final Step: Hard Refresh of Directory Services
         // 'killall opendirectoryd' is more robust than flushcache for auth changes
@@ -163,6 +176,7 @@ class MigrationViewModel: ObservableObject {
             for token in components {
                 // Must explicitly delete these tokens to convert account type
                 if token.contains("Active Directory") || token.contains("LocalCachedUser") {
+                     ScriptLogger.ScriptLogging("Removing Auth Token: \(token)")
                      _ = Shell.execute("dscl . -delete /Users/\(ScriptConfig.User) AuthenticationAuthority \"\(token)\"")
                 }
             }
