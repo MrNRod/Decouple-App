@@ -90,7 +90,7 @@ class MigrationViewModel: ObservableObject {
             self.steps.append(MigrationStep(name: "Fix Authentication Authority", command: "func_FixAuthAuthority"))
             // 3. Clear Password Policies (Critical for preventing lockout)
             // This removes AD-imposed rules like "change password every 90 days"
-            self.steps.append(MigrationStep(name: "Clear Account Policies", command: "pwpolicy -n -u \(ScriptConfig.User) -clearaccountpolicies"))
+            self.steps.append(MigrationStep(name: "Clear Account Policies", command: "pwpolicy -n /Local/Default -u \(ScriptConfig.User) -clearaccountpolicies"))
             // 4. Destroy Kerberos Tickets (Security/Cleanup)
             self.steps.append(MigrationStep(name: "Destroy Kerberos Tickets", command: "kdestroy -a"))
             // 5. Permissions & Groups
