@@ -37,7 +37,14 @@ class MigrationViewModel: ObservableObject {
         "dsAttrTypeNative:original_realname",
         "dsAttrTypeNative:original_shell",
         "dsAttrTypeNative:preserved_attributes",
-        "dsAttrTypeNative:accountPolicyData"
+        "dsAttrTypeNative:accountPolicyData",
+        "FirstName",
+        "LastName",
+        "JobTitle",
+        "Company",
+        "Department",
+        "dsAttrTypeNative:_writers_LinkedIdentity",
+        "dsAttrTypeNative:email_address"
     ]
     init() {
         // 1. Determine User
@@ -107,7 +114,11 @@ class MigrationViewModel: ObservableObject {
             // 5. Permissions & Groups
             // Note: We use detectedHomeDir here, not the hardcoded path
             self.steps.append(MigrationStep(name: "Update Home Ownership (chown)", command: "chown -R \(ScriptConfig.User):staff \"\(detectedHomeDir)\""))
-            self.steps.append(MigrationStep(name: "Secure Home Permissions (chmod)", command: "chmod -R 750 \"\(detectedHomeDir)\"")) // 755 or 700 depending on preference
+            // Secure Home Permissions (Standard macOS: 755 root, 700 children)
+            self.steps.append(MigrationStep(name: "Secure Home Contents (chmod 700)", command: "chmod -R 700 \"\(detectedHomeDir)\""))
+            self.steps.append(MigrationStep(name: "Open Home Root (chmod 750)", command: "chmod 750 \"\(detectedHomeDir)\""))
+            self.steps.append(MigrationStep(name: "Open Public Folder (chmod 755)", command: "chmod 755 \"\(detectedHomeDir)/Public\""))
+            
             self.steps.append(MigrationStep(name: "Add to Staff Group", command: "dseditgroup -o edit -a \(ScriptConfig.User) -t user staff"))
             // 6. Reset Primary Group ID to Staff (20)
             self.steps.append(MigrationStep(name: "Reset PrimaryGroupID to 20", command: "dscl . -create /Users/\(ScriptConfig.User) PrimaryGroupID 20"))
