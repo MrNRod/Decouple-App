@@ -61,6 +61,7 @@ struct ContentView: View {
         .padding()
         .frame(width: 500, height: 500)
         .interactiveDismissDisabled(viewModel.isRunning)
+        .background(WindowAccessor())
     }
 }
 // Subviews
@@ -108,4 +109,17 @@ struct SuccessView: View {
             Text("Migration Successful.\nUser is now Local.").multilineTextAlignment(.center).padding()
         }.frame(maxHeight: 200)
     }
+}
+
+struct WindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                window.standardWindowButton(.closeButton)?.isEnabled = false
+            }
+        }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
