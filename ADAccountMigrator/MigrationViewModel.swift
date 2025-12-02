@@ -58,6 +58,11 @@ class MigrationViewModel: ObservableObject {
     }
     // MARK: - Pre-Flight Analysis
     private func analyzeSystemState() {
+        // 0. Check for Root
+        if getuid() != 0 {
+            self.logToUI("WARNING: App is not running as root. Detection may fail.")
+            self.logToUI("Please relaunch with 'sudo'.")
+        }
         self.logToUI("Analyzing system state for user: \(ScriptConfig.User)...")
         // Check 1: Is User Mobile?
         let authCheck = Shell.execute("dscl . -read /Users/\(ScriptConfig.User) AuthenticationAuthority")
@@ -160,7 +165,13 @@ class MigrationViewModel: ObservableObject {
                     let isUnbind = step.command.contains("dsconfigad")
                     let isKill = step.command.contains("killall")
                     let isPwPolicy = step.command.contains("pwpolicy")
-                    if isAttributeDeletion || isUnbind || isKill || isPwPolicy {
+                    let isChown = step.command.contains("chown")
+                    
+                    // SIP/TCC often blocks chown on specific Library folders even for root
+                    if isChown && result.1.contains("Operation not permitted") {
+                         ScriptLogger.ScriptLogging("SIP/TCC Warning (Ignored): \(result.1)")
+                         self.completeStep(index: index, output: "Success (Skipped protected files)")
+                    } else if isAttributeDeletion || isUnbind || isKill || isPwPolicy {
                          ScriptLogger.ScriptLogging("Non-Critical Error (Ignored): \(result.1)")
                          self.completeStep(index: index, output: "OK (Item missing or cleared)")
                     } else {
