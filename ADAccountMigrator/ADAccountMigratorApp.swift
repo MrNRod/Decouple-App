@@ -29,7 +29,7 @@ func relaunchAsRoot() {
     let euid = geteuid()
     if euid != 0 {
         let executablePath = Bundle.main.executablePath!
-        let script = "do shell script \"\\\"\(executablePath)\\\"\" with administrator privileges"
+        let script = "do shell script \"\\\"\(executablePath)\\\" &> /dev/null &\" with administrator privileges"
         
         let appleScript = NSAppleScript(source: script)
         var error: NSDictionary?
