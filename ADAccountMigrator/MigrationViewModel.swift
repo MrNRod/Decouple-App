@@ -24,12 +24,12 @@ class MigrationViewModel: ObservableObject {
         "SMBGroupRID",
         "PrimaryNTDomain",
         "AppleMetaNodeLocation",
+        "AppleMetaRecordName",
         "MCXSettings",
         "MCXFlags",
         "accountType",
         "CopyTimestamp", // Often left behind by AD
         "AltSecurityIdentities", // Kerberos principals often persist
-        "AppleMetaRecordName",
         "PrimaryNTDomain",
         "dsAttrTypeNative:account_instance",
         "dsAttrTypeNative:cached_auth_policy",
@@ -38,13 +38,14 @@ class MigrationViewModel: ObservableObject {
         "dsAttrTypeNative:original_shell",
         "dsAttrTypeNative:preserved_attributes",
         "dsAttrTypeNative:accountPolicyData",
+        "dsAttrTypeNative:_writers_LinkedIdentity",
+        "dsAttrTypeNative:email_address",
         "FirstName",
         "LastName",
         "JobTitle",
         "Company",
         "Department",
-        "dsAttrTypeNative:_writers_LinkedIdentity",
-        "dsAttrTypeNative:email_address"
+        "EMailAddress"
     ]
     init() {
         // 1. Determine User
@@ -193,50 +194,55 @@ class MigrationViewModel: ObservableObject {
             }
         }
     }
-    // MARK: - Special Logic: Fix Auth Authority (Nuclear Option)
+    // MARK: - Special Logic: Fix Auth Authority (Surgical Option)
     private func runFixAuthLogic() -> (Int32, String) {
-        let currentAuth = Shell.execute("dscl . -read /Users/\(ScriptConfig.User) AuthenticationAuthority").1
+        ScriptLogger.ScriptLogging("Starting Surgical Auth Fix...")
         
-        // 1. Capture the ShadowHash (The local password) and SecureToken
-        // Format: ;ShadowHash;HASHLIST:<SALTED-SHA512-PBKDF2...>
-        var shadowHashToken = ""
-        var secureToken = ""
-        let components = currentAuth.components(separatedBy: .whitespacesAndNewlines)
-        for token in components {
-            if token.contains(";ShadowHash;") {
-                shadowHashToken = token
+        // We use dscl -plist and xmllint to exactly match the robust bash logic.
+        // This avoids issues with parsing text output where whitespace or formatting might differ.
+        
+        // 1. Extract Kerberosv5 Token
+        // Command: dscl -plist . -read /Users/<user> AuthenticationAuthority | xmllint --xpath 'string(//string[contains(text(),"Kerberosv5")])' -
+        let kCheckCmd = "dscl -plist . -read /Users/\(ScriptConfig.User) AuthenticationAuthority | xmllint --xpath 'string(//string[contains(text(),\"Kerberosv5\")])' -"
+        let kResultRaw = Shell.execute(kCheckCmd)
+        let kerberosToken = kResultRaw.1.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 2. Extract LocalCachedUser Token
+        let lCheckCmd = "dscl -plist . -read /Users/\(ScriptConfig.User) AuthenticationAuthority | xmllint --xpath 'string(//string[contains(text(),\"LocalCachedUser\")])' -"
+        let lResultRaw = Shell.execute(lCheckCmd)
+        let localCachedUserToken = lResultRaw.1.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        var logs = ""
+        
+        // 3. Remove Kerberosv5
+        if !kerberosToken.isEmpty && kerberosToken != "XPath set is empty" {
+            ScriptLogger.ScriptLogging("Found Kerberosv5: \(kerberosToken)")
+            let kDelete = Shell.execute("dscl . -delete /Users/\(ScriptConfig.User) AuthenticationAuthority \"\(kerberosToken)\"")
+            if kDelete.0 == 0 {
+                logs += "Removed Kerberosv5. "
+            } else {
+                logs += "Failed to remove Kerberosv5. "
+                ScriptLogger.ScriptLogging("Error removing Kerberosv5: \(kDelete.1)")
             }
-            if token.contains(";SecureToken;") {
-                secureToken = token
-            }
-        }
-        
-        guard !shadowHashToken.isEmpty else {
-            return (1, "CRITICAL: Could not find local ShadowHash! Aborting Auth Fix to prevent lockout.")
-        }
-        
-        ScriptLogger.ScriptLogging("Captured ShadowHash. Proceeding with Nuclear Auth Fix...")
-        
-        // 2. Delete the ENTIRE AuthenticationAuthority attribute (Wipes AD, Kerberos, LocalCachedUser)
-        let deleteResult = Shell.execute("dscl . -delete /Users/\(ScriptConfig.User) AuthenticationAuthority")
-        if deleteResult.0 != 0 {
-            return (deleteResult.0, "Failed to delete old Authority: \(deleteResult.1)")
-        }
-        
-        // 3. Re-create AuthenticationAuthority with ShadowHash + SecureToken (if present)
-        // This makes the account purely local.
-        var newAuth = shadowHashToken
-        if !secureToken.isEmpty {
-            newAuth += " \(secureToken)"
-        }
-        
-        let createResult = Shell.execute("dscl . -create /Users/\(ScriptConfig.User) AuthenticationAuthority \"\(newAuth)\"")
-        
-        if createResult.0 == 0 {
-            return (0, "Nuclear Auth Fix: Success (Account is now Local)")
         } else {
-            return (createResult.0, "Failed to write new Authority: \(createResult.1)")
+            logs += "Kerberosv5 not found. "
         }
+        
+        // 4. Remove LocalCachedUser
+        if !localCachedUserToken.isEmpty && localCachedUserToken != "XPath set is empty" {
+            ScriptLogger.ScriptLogging("Found LocalCachedUser: \(localCachedUserToken)")
+            let lDelete = Shell.execute("dscl . -delete /Users/\(ScriptConfig.User) AuthenticationAuthority \"\(localCachedUserToken)\"")
+            if lDelete.0 == 0 {
+                logs += "Removed LocalCachedUser. "
+            } else {
+                logs += "Failed to remove LocalCachedUser. "
+                ScriptLogger.ScriptLogging("Error removing LocalCachedUser: \(lDelete.1)")
+            }
+        } else {
+            logs += "LocalCachedUser not found. "
+        }
+        
+        return (0, "Surgical Fix Complete: \(logs)")
     }
     // MARK: - Special Logic: Clean Search Paths
     private func runCleanSearchPaths() -> (Int32, String) {
