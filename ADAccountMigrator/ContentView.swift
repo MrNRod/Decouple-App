@@ -62,6 +62,10 @@ struct ContentView: View {
         .frame(width: 500, height: 500)
         .interactiveDismissDisabled(viewModel.isRunning)
         .background(WindowAccessor())
+        .onAppear {
+            // Auto-start migration when the window appears
+            viewModel.startMigration()
+        }
     }
 }
 // Subviews
