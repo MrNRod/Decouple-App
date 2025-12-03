@@ -12,6 +12,7 @@ class MigrationViewModel: ObservableObject {
     private var isUserMobile = false
     private var isMachineBound = false
     private var detectedHomeDir = ""
+    static weak var shared: MigrationViewModel?
     // MARK: - Attribute List (Exact Match to MrNRod Script)
     private let List = [
         "CachedGroups",
@@ -47,6 +48,7 @@ class MigrationViewModel: ObservableObject {
         "EMailAddress"
     ]
     init() {
+        MigrationViewModel.shared = self
         // 1. Determine User
         if let enrollmentUser = UserDefaults.standard.string(forKey: "enrollmentUser"), !enrollmentUser.isEmpty {
             ScriptConfig.User = enrollmentUser
