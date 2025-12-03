@@ -8,6 +8,15 @@
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Set the window level to floating to keep it on top of other windows
+        DispatchQueue.main.async {
+            NSApplication.shared.windows.forEach { window in
+                window.level = .floating
+            }
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if let viewModel = MigrationViewModel.shared, viewModel.isRunning {
             return .terminateCancel
@@ -39,6 +48,7 @@ struct ADAccountMigratorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     init() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
         relaunchAsRoot()
     }
 
