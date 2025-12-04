@@ -42,7 +42,7 @@ You can use a Configuration Profile to target a specific user other than the cur
 
 | Key | Type | Description |
 | :--- | :--- | :--- |
-| `enrollmentUser` | String | The short username (e.g., `jdoe`) of the account to migrate. |
+| `enrollmentUser` | String | The short username of the account to migrate. **Recommended:** Use your MDM's variable (e.g., `{EnrollmentUser}`). |
 
 #### Example Mobileconfig Snippet:
 ```xml
@@ -59,7 +59,12 @@ You can use a Configuration Profile to target a specific user other than the cur
 </array>
 ```
 
-If this key is set, the app will migrate `target_username` instead of the user running the app.
+If this key is set, the app will migrate the specified user instead of the user running the app.
+
+> [!TIP]
+> **Use MDM Variables:** We strongly recommend substituting `target_username` with your MDM's dynamic user variable to ensure the correct user is targeted on each machine.
+> *   **Workspace ONE:** `{EnrollmentUser}`
+> *   **Jamf Pro:** `$USERNAME` (or equivalent)
 
 ## How It Works
 
