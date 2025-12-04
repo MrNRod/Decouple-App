@@ -15,6 +15,7 @@
 
 *   **macOS:** 14.6 or later.
 *   **Privileges:** Must be run as **root** (the app will automatically attempt to relaunch itself with `sudo` if opened normally).
+*   **Permissions:** **Full Disk Access (FDA)** is strictly required. The app needs to modify user home directories, system configuration files, and directory services which are protected by macOS TCC (Transparency, Consent, and Control).
 
 ## Usage
 
@@ -25,9 +26,19 @@
 4.  If the user is a Mobile account, the migration process will start automatically.
 
 ### MDM / Automated Deployment
-You can deploy this tool via MDM (Jamf, Kandji, Mosyle, etc.) and use a Configuration Profile to target a specific user other than the currently logged-in one.
+You can deploy this tool via any MDM (Workspace ONE,Jamf, Kandji, Mosyle, etc.).
 
-**Preference Domain:** `com.mrnrod45.ADAccountMigrator`
+#### 1. Full Disk Access (TCC) Profile
+Since this application interacts with protected system areas, you must deploy a PPPC (Privacy Preferences Policy Control) profile granting **Full Disk Access** to the application's Bundle ID.
+
+> [!TIP]
+> We recommend using the **[PPPC Utility](https://github.com/jamf/PPPC-Utility)** by Jamf to easily generate the necessary configuration profile. It allows you to drag and drop the compiled application to automatically determine the correct **Code Requirement** and **Bundle ID**.
+
+#### 2. Configuration Profile (Target User)
+You can use a Configuration Profile to target a specific user other than the currently logged-in one.
+
+**Preference Domain:** `com.mrnrod45.ADAccountMigrator` (Default)
+*Note: If you change the Bundle Identifier in Xcode before compiling, ensure your Preference Domain matches your custom Bundle ID.*
 
 | Key | Type | Description |
 | :--- | :--- | :--- |
