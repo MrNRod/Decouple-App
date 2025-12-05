@@ -94,6 +94,7 @@ struct StatusIndicator: View {
         case .running: ProgressView().scaleEffect(0.5)
         case .success: Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
         case .failure: Image(systemName: "xmark.octagon.fill").foregroundColor(.red)
+        case .warning: Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
         }
     }
 }

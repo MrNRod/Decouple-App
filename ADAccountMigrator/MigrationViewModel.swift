@@ -156,7 +156,12 @@ class MigrationViewModel: ObservableObject {
                     result = self.runCleanSearchPaths()
                 } else {
                     ScriptLogger.ScriptLogging("Exec: \(step.command)")
-                    result = Shell.execute(step.command)
+                    // Use retry for chown specifically to handle EINTR from security software
+                    if step.command.hasPrefix("chown") {
+                        result = Shell.executeWithRetry(step.command)
+                    } else {
+                        result = Shell.execute(step.command)
+                    }
                 }
                 // ERROR HANDLING
                 if result.1.contains("Permission denied") {
@@ -173,9 +178,15 @@ class MigrationViewModel: ObservableObject {
                     let isChmod = step.command.contains("chmod")
                     
                     // SIP/TCC often blocks chown/chmod on specific Library folders even for root
-                    if (isChown || isChmod) && result.1.contains("Operation not permitted") {
-                         ScriptLogger.ScriptLogging("SIP/TCC Warning (Ignored): \(result.1)")
-                         self.completeStep(index: index, output: "Success (Skipped protected files)")
+                    if (isChown || isChmod) {
+                         if result.1.contains("Operation not permitted") {
+                             ScriptLogger.ScriptLogging("SIP/TCC Warning (Ignored): \(result.1)")
+                             self.completeStep(index: index, output: "Success (Skipped protected files)")
+                         } else {
+                             // Treat other chown/chmod errors as warnings (non-critical)
+                             ScriptLogger.ScriptLogging("Non-Critical Error (Warning): \(result.1)")
+                             self.completeStepWithWarning(index: index, output: "Warning: \(result.1)")
+                         }
                     } else if isAttributeDeletion || isUnbind || isKill || isPwPolicy {
                          ScriptLogger.ScriptLogging("Non-Critical Error (Ignored): \(result.1)")
                          self.completeStep(index: index, output: "OK (Item missing or cleared)")
@@ -191,7 +202,13 @@ class MigrationViewModel: ObservableObject {
                 self.isRunning = false
                 self.isComplete = true
                 ScriptLogger.ScriptLogging("Sequence Finished.")
-                self.logToUI("--- ALL TASKS COMPLETED ---")
+                
+                let hasWarnings = self.steps.contains { $0.status == .warning }
+                if hasWarnings {
+                    self.logToUI("--- MIGRATION COMPLETED WITH WARNINGS ---")
+                } else {
+                    self.logToUI("--- ALL TASKS COMPLETED SUCCESSFULLY ---")
+                }
             }
         }
     }
@@ -271,6 +288,14 @@ class MigrationViewModel: ObservableObject {
             self.steps[index].outputLog = output
             self.progress = Double(index + 1)
             self.logToUI("[\(self.steps[index].name)]: \(output)")
+        }
+    }
+    private func completeStepWithWarning(index: Int, output: String) {
+        DispatchQueue.main.async {
+            self.steps[index].status = .warning
+            self.steps[index].outputLog = output
+            self.progress = Double(index + 1)
+            self.logToUI("[\(self.steps[index].name)] [WARNING]: \(output)")
         }
     }
     private func failStep(index: Int, message: String) {

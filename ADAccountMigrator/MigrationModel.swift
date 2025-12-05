@@ -12,6 +12,7 @@ enum MigrationStatus {
     case running
     case success
     case failure
+    case warning
 }
 struct MigrationStep: Identifiable {
     let id = UUID()
@@ -65,5 +66,33 @@ class Shell {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return (task.terminationStatus, output)
+    }
+
+    static func executeWithRetry(_ command: String, maxRetries: Int = 5, delay: UInt32 = 2) -> (Int32, String) {
+        var attempts = 0
+        var result: (Int32, String) = (-1, "")
+        
+        repeat {
+            attempts += 1
+            result = execute(command)
+            
+            // If success, return immediately
+            if result.0 == 0 { return result }
+            
+            // Check for specific interruption errors
+            // "Interrupted system call" is the standard message for EINTR
+            if result.1.localizedCaseInsensitiveContains("Interrupted system call") || result.1.localizedCaseInsensitiveContains("fts_read") {
+                ScriptLogger.ScriptLogging("Command interrupted (Attempt \(attempts)/\(maxRetries)). Retrying in \(delay)s...")
+                sleep(delay)
+            } else {
+                // If it's a different error (e.g. Permission Denied), retrying likely won't help.
+                // Return the result immediately.
+                return result
+            }
+            
+        } while attempts < maxRetries
+        
+        ScriptLogger.ScriptLogging("Command failed after \(maxRetries) attempts.")
+        return result
     }
 }
