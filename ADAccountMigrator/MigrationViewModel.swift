@@ -156,8 +156,8 @@ class MigrationViewModel: ObservableObject {
                     result = self.runCleanSearchPaths()
                 } else {
                     ScriptLogger.ScriptLogging("Exec: \(step.command)")
-                    // Use retry for chown specifically to handle EINTR from security software
-                    if step.command.hasPrefix("chown") {
+                    // Use retry for chown and chmod specifically to handle EINTR from security software
+                    if step.command.hasPrefix("chown") || step.command.hasPrefix("chmod") {
                         result = Shell.executeWithRetry(step.command)
                     } else {
                         result = Shell.execute(step.command)
