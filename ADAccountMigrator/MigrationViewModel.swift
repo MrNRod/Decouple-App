@@ -126,7 +126,9 @@ class MigrationViewModel: ObservableObject {
             // Public folder is readable by others, so we fix group recursively there.
             self.steps.append(MigrationStep(name: "Update Public Folder Ownership", command: "chown -R \(ScriptConfig.User):staff \"\(detectedHomeDir)/Public\""))
             // Secure Home Permissions (Standard macOS: 755 root, 700 children)
-            self.steps.append(MigrationStep(name: "Secure Home Contents (chmod 700)", command: "chmod -R 700 \"\(detectedHomeDir)\""))
+            // Removed recursive chmod 700 to prevent interruptions. Subfolders are already 700 by default.
+            // self.steps.append(MigrationStep(name: "Secure Home Contents (chmod 700)", command: "chmod -R 700 \"\(detectedHomeDir)\""))
+            
             self.steps.append(MigrationStep(name: "Open Home Root (chmod 750)", command: "chmod 750 \"\(detectedHomeDir)\""))
             self.steps.append(MigrationStep(name: "Open Public Folder (chmod 755)", command: "chmod 755 \"\(detectedHomeDir)/Public\""))
             
