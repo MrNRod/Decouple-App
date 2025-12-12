@@ -1,24 +1,21 @@
 {
   "fill" : {
-    "automatic-gradient" : "srgb:0.00000,0.32852,0.57488,1.00000"
+    "solid" : "display-p3:0.27119,0.09369,0.05754,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
           "blend-mode" : "normal",
-          "fill" : {
-            "solid" : "display-p3:0.86279,0.86279,0.85938,1.00000"
-          },
+          "fill" : "automatic",
           "glass" : false,
           "image-name" : "Person.png",
           "name" : "Person",
-          "opacity" : 1,
           "position" : {
-            "scale" : 0.45,
+            "scale" : 0.1,
             "translation-in-points" : [
-              -0.25,
-              16.82421875
+              0,
+              0.22499999999990905
             ]
           }
         }
@@ -35,17 +32,16 @@
     {
       "layers" : [
         {
-          "fill" : {
-            "solid" : "srgb:0.37056,0.37056,0.37056,1.00000"
-          },
+          "blend-mode" : "normal",
+          "fill" : "automatic",
           "glass" : false,
           "image-name" : "Cloud.png",
           "name" : "Cloud",
           "position" : {
-            "scale" : 1,
+            "scale" : 0.16,
             "translation-in-points" : [
-              0,
-              -143.6171875
+              0.07999999999992724,
+              -185.2338367369632
             ]
           }
         }
@@ -62,14 +58,15 @@
     {
       "layers" : [
         {
+          "fill" : "automatic",
           "glass" : false,
-          "image-name" : "matt-icons_drive-yellow.svg",
-          "name" : "matt-icons_drive-yellow",
+          "image-name" : "Drive.png",
+          "name" : "Drive",
           "position" : {
-            "scale" : 4,
+            "scale" : 0.5,
             "translation-in-points" : [
-              -2.266200000000026,
-              139.9921875
+              -2.5,
+              132.46709666922095
             ]
           }
         }
