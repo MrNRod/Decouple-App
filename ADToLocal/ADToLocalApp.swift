@@ -1,6 +1,6 @@
 //
-//  ADAccountMigratorApp.swift
-//  ADAccountMigrator
+//  ADToLocalApp.swift
+//  ADToLocal
 //
 //  Created by Noel Rodriguez-Lebron on 12/1/25.
 //
@@ -44,7 +44,7 @@ func relaunchAsRoot() {
 }
 
 @main
-struct ADAccountMigratorApp: App {
+struct ADToLocalApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     init() {

@@ -1,6 +1,6 @@
-# ADAccountMigrator
+# AD to Local
 
-**ADAccountMigrator** is a macOS utility designed to convert "Mobile" Active Directory accounts into standard "Local" accounts. It automates the complex process of unbinding the machine, stripping AD attributes, and fixing local permissions, ensuring the user account is completely severed from the domain while preserving their data.
+**AD to Local** is a macOS utility designed to convert "Mobile" Active Directory accounts into standard "Local" accounts. It automates the complex process of unbinding the machine, stripping AD attributes, and fixing local permissions, ensuring the user account is completely severed from the domain while preserving their data.
 
 ## Features
 
@@ -21,7 +21,7 @@
 
 ### Interactive Mode
 1.  Download the latest release or build from source.
-2.  Launch `ADAccountMigrator.app`.
+2.  Launch `ADToLocal.app`.
 3.  The app will detect the current user and run pre-flight checks.
 4.  If the user is a Mobile account, the migration process will start automatically.
 
@@ -37,7 +37,7 @@ Since this application interacts with protected system areas, you must deploy a 
 #### 2. Configuration Profile (Target User)
 You can use a Configuration Profile to target a specific user other than the currently logged-in one.
 
-**Preference Domain:** `com.mrnrod45.ADAccountMigrator` (Default)
+**Preference Domain:** `com.mrnrod45.ADToLocal` (Default)
 *Note: If you change the Bundle Identifier in Xcode before compiling, ensure your Preference Domain matches your custom Bundle ID.*
 
 | Key | Type | Description |
@@ -50,7 +50,7 @@ You can use a Configuration Profile to target a specific user other than the cur
 <array>
     <dict>
         <key>PayloadIdentifier</key>
-        <string>com.mrnrod45.ADAccountMigrator</string>
+        <string>com.mrnrod45.ADToLocal</string>
         <key>PayloadType</key>
         <string>com.apple.configuration.managed</string>
         <key>enrollmentUser</key>
