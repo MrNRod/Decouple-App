@@ -100,8 +100,7 @@ class MigrationViewModel: ObservableObject {
         }
         // Scenario 2: Unbind Machine (If Bound)
         if isMachineBound {
-            let unbindCmd = "dsconfigad -remove -force -u none -p none"
-            self.steps.append(MigrationStep(name: "Unbind Mac from AD", command: unbindCmd))
+            self.steps.append(MigrationStep(name: "Unbind & Restart Services", command: "func_UnbindWithVerification"))
             self.steps.append(MigrationStep(name: "Remove AD from Search Path", command: "func_CleanSearchPaths"))
         }
         // Scenario 3: Convert User (If Mobile)
@@ -156,6 +155,8 @@ class MigrationViewModel: ObservableObject {
                 // Route Special Functions
                 if step.command == "func_FixAuthAuthority" {
                     result = self.runFixAuthLogic()
+                } else if step.command == "func_UnbindWithVerification" {
+                    result = self.runUnbindWithVerification()
                 } else if step.command == "func_CleanSearchPaths" {
                     result = self.runCleanSearchPaths()
                 } else {
@@ -194,6 +195,9 @@ class MigrationViewModel: ObservableObject {
                     } else if isAttributeDeletion || isUnbind || isKill || isPwPolicy {
                          ScriptLogger.ScriptLogging("Non-Critical Error (Ignored): \(result.1)")
                          self.completeStep(index: index, output: "OK (Item missing or cleared)")
+                    } else if step.command == "func_UnbindWithVerification" {
+                         ScriptLogger.ScriptLogging("Unbind Warning: \(result.1)")
+                         self.completeStepWithWarning(index: index, output: result.1)
                     } else {
                         self.failStep(index: index, message: result.1)
                         return
@@ -276,6 +280,40 @@ class MigrationViewModel: ObservableObject {
             return (0, "Search Paths Cleaned")
         }
         return (0, "Search Paths Clean (No AD found)")
+    }
+    
+    // MARK: - Special Logic: Unbind with Verification
+    private func runUnbindWithVerification() -> (Int32, String) {
+        let maxRetries = 3
+        var currentTry = 0
+        
+        while currentTry < maxRetries {
+            currentTry += 1
+            ScriptLogger.ScriptLogging("Unbind Attempt \(currentTry)...")
+            
+            // 1. Run Unbind
+            let unbindCmd = "dsconfigad -remove -force -u none -p none"
+            let result = Shell.execute(unbindCmd)
+            ScriptLogger.ScriptLogging("Unbind Output: \(result.1)")
+            
+            // 2. Force Directory Services Refresh (Critical fix)
+            _ = Shell.execute("killall opendirectoryd")
+            
+            // 3. Wait for AD to release (critical for race conditions)
+            Thread.sleep(forTimeInterval: 2.0)
+            
+            // 4. Verify
+            let check = Shell.execute("dsconfigad -show")
+            let isStillBound = check.1.contains("Active Directory Domain")
+            
+            if !isStillBound {
+                return (0, "Unbind Successful (Verified)")
+            } else {
+                ScriptLogger.ScriptLogging("Verification Failed: Still bound after attempt \(currentTry).")
+            }
+        }
+        
+        return (1, "Warning: Failed to fully unbind after \(maxRetries) attempts. Proceeding.")
     }
     // MARK: - UI Helpers
     private func updateStepStatus(index: Int, status: MigrationStatus) {
