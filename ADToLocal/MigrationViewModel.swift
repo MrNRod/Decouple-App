@@ -179,6 +179,9 @@ class MigrationViewModel: ObservableObject {
                     let isUnbind = step.command.contains("dsconfigad")
                     let isKill = step.command.contains("killall")
                     let isPwPolicy = step.command.contains("pwpolicy")
+                    let isKdestroy = step.command.contains("kdestroy")
+                    let isDsEditGroup = step.command.contains("dseditgroup")
+                    let isDsClCreate = step.command.contains("dscl . -create")
                     let isChown = step.command.contains("chown")
                     let isChmod = step.command.contains("chmod")
                     
@@ -192,9 +195,13 @@ class MigrationViewModel: ObservableObject {
                              ScriptLogger.ScriptLogging("Non-Critical Error (Warning): \(result.1)")
                              self.completeStepWithWarning(index: index, output: "Warning: \(result.1)")
                          }
-                    } else if isAttributeDeletion || isUnbind || isKill || isPwPolicy {
+                    } else if isAttributeDeletion || isUnbind || isKill || isPwPolicy || isKdestroy {
                          ScriptLogger.ScriptLogging("Non-Critical Error (Ignored): \(result.1)")
                          self.completeStep(index: index, output: "OK (Item missing or cleared)")
+                    } else if isDsEditGroup || isDsClCreate {
+                         // These are important but shouldn't stop the 'killall' from running
+                         ScriptLogger.ScriptLogging("Non-Critical Error (Warning): \(result.1)")
+                         self.completeStepWithWarning(index: index, output: "Warning: \(result.1)")
                     } else if step.command == "func_UnbindWithVerification" {
                          ScriptLogger.ScriptLogging("Unbind Warning: \(result.1)")
                          self.completeStepWithWarning(index: index, output: result.1)
