@@ -30,6 +30,8 @@ final class MigrationViewModel {
     let autoStart: Bool
     /// Shows progress in swiftDialog instead of the SwiftUI window (`--swiftdialog`, if it's installed).
     let usesDialog: Bool
+    /// The `grantAdmin` managed preference. Off unless the profile turns it on.
+    let grantAdmin: Bool
 
     private(set) var phase: Phase = .analyzing
     private(set) var steps: [MigrationStep] = []
@@ -42,6 +44,7 @@ final class MigrationViewModel {
 
     init(arguments: [String] = CommandLine.arguments) {
         user = TargetAccount.resolve()
+        grantAdmin = UserDefaults.standard.bool(forKey: "grantAdmin")
         mode = arguments.contains("--verify") ? .verifyOnly : .migrate
         usesDialog = arguments.contains("--swiftdialog") && SwiftDialogPresenter.isInstalled
         // The dialog has no start button, so it always runs straight through.
@@ -76,7 +79,8 @@ final class MigrationViewModel {
         if geteuid() != 0 { append("Not running as root: read-only checks only.") }
 
         let name = user
-        guard let result = await offMain({ AccountOperations.analyze(user: name) }) else {
+        let admin = grantAdmin
+        guard let result = await offMain({ AccountOperations.analyze(user: name, grantAdmin: admin) }) else {
             append("The account '\(user)' does not exist.")
             phase = .failed("The account '\(user)' was not found.")
             presentResult(title: "Migration Not Started", message: "The account '\(user)' was not found.")
@@ -86,6 +90,7 @@ final class MigrationViewModel {
         findings = result.findings
         append("Machine bound: \(result.machineBound) | Mobile account: \(result.snapshot.isMobileAccount) | UID \(result.context.uid)")
         append("Home directory: \(result.context.homeDirectory)")
+        if grantAdmin { append("grantAdmin is on: the user will be added to the admin group.") }
         append("FileVault: \(result.context.fileVaultEnabled ? "on" : "off") | SecureToken: \(result.context.hadSecureToken)")
         findings.forEach { append("Found: \($0.message)") }
 

@@ -39,13 +39,20 @@ nonisolated enum AccountOperations {
         return result.succeeded ? AccountSnapshot(plistData: Data(result.output.utf8)) : nil
     }
 
+    /// The node comes first for search paths: `dscl /Search -read .` (not `dscl . -read /Search`).
+    static func searchPaths() -> [String] {
+        let result = CommandRunner.run(Tool.dscl, ["-plist", "/Search", "-read", ".", "CSPSearchPath"])
+        guard result.succeeded, let record = AccountSnapshot(plistData: Data(result.output.utf8)) else { return [] }
+        return record.values("CSPSearchPath")
+    }
+
     static func isMachineBound() -> Bool {
         CommandRunner.run(Tool.dsconfigad, ["-show"]).output.contains("Active Directory Domain")
     }
 
     static func homeState(_ path: String) -> HomeState {
         guard FileManager.default.fileExists(atPath: path) else {
-            return HomeState(exists: false, mode: nil, groupID: nil, hasDenyDeleteACL: false)
+            return HomeState(exists: false, mode: nil, groupID: nil, hasStockACL: false)
         }
         // "%Lp %g" prints the octal permission bits and the numeric group, e.g. "755 20".
         let stat = CommandRunner.run(Tool.stat, ["-f", "%Lp %g", path]).output.split(separator: " ")
@@ -54,7 +61,7 @@ nonisolated enum AccountOperations {
         let listing = CommandRunner.run(Tool.ls, ["-lde", path]).output
         return HomeState(
             exists: true, mode: mode, groupID: group,
-            hasDenyDeleteACL: listing.contains(HomeState.freshACL)
+            hasStockACL: HomeState.isStockACL(listing: listing)
         )
     }
 
@@ -71,13 +78,15 @@ nonisolated enum AccountOperations {
     }
 
     /// Reads the system and builds the plan. Returns nil if the account doesn't exist.
-    static func analyze(user: String) -> SystemAnalysis? {
+    static func analyze(user: String, grantAdmin: Bool = false) -> SystemAnalysis? {
         guard let snapshot = readSnapshot(user: user) else { return nil }
         let bound = isMachineBound()
         let homePath = snapshot.homeDirectory ?? "/Users/\(user)"
         let home = homeState(homePath)
         let nested = groupValues("admin", "NestedGroups")
         let staff = groupValues("staff", "GroupMembership")
+        let admins = groupValues("admin", "GroupMembership")
+        let paths = searchPaths()
         let fileVault = fileVaultEnabled()
 
         let context = MigrationContext(
@@ -95,11 +104,12 @@ nonisolated enum AccountOperations {
             adminNestedGroups: nested, staffMembers: staff, context: context,
             findings: FreshAccountProfile.findings(
                 snapshot: snapshot, machineBound: bound, home: home,
-                adminNestedGroups: nested, staffMembers: staff, userName: user
+                adminNestedGroups: nested, staffMembers: staff, userName: user, searchPaths: paths
             ),
             plan: StepPlanner.plan(
                 snapshot: snapshot, machineBound: bound, home: home,
-                adminNestedGroups: nested, staffMembers: staff, userName: user
+                adminNestedGroups: nested, staffMembers: staff, userName: user,
+                grantAdmin: grantAdmin, adminMembers: admins, searchPaths: paths
             )
         )
     }
@@ -121,6 +131,7 @@ nonisolated enum AccountOperations {
         case .clearAccountPolicies: outcome = clearAccountPolicies(context)
         case .destroyKerberosTickets: outcome = destroyKerberosTickets(context)
         case .removeStaffMembership: outcome = removeStaffMembership(context)
+        case .grantAdmin: outcome = grantAdmin(context)
         case .fixHomeOwnership: outcome = fixHomeOwnership(context)
         case .fixHomeContentGroups: outcome = fixHomeContentGroups(context)
         case .fixHomePermissions: outcome = fixHomePermissions(context)
@@ -173,14 +184,31 @@ nonisolated enum AccountOperations {
         return .warning("Still bound after \(attempts) attempts. Continuing.")
     }
 
+    /// Removes AD from the custom search paths and puts the search policy back to Automatic,
+    /// which is what a Mac that was never bound has.
     private static func cleanSearchPaths() -> StepOutcome {
-        let path = "/Active Directory/All Domains"
-        let current = CommandRunner.run(Tool.dscl, ["/Search", "-read", ".", "CSPSearchPath"]).output
-        guard current.contains("Active Directory") else { return .success("Not present") }
-        _ = CommandRunner.run(Tool.dscl, ["/Search/Contacts", "-delete", ".", "CSPSearchPath", path])
-        _ = CommandRunner.run(Tool.dscl, ["/Search", "-delete", ".", "CSPSearchPath", path])
-        let after = CommandRunner.run(Tool.dscl, ["/Search", "-read", ".", "CSPSearchPath"]).output
-        return after.contains("Active Directory") ? .warning("AD is still in the search path.") : .success("Removed")
+        let automatic = "dsAttrTypeStandard:NSPSearchPath"
+        var notes: [String] = []
+
+        let adPaths = searchPaths().filter(SearchPathFilter.isActiveDirectory)
+        for path in adPaths {
+            _ = CommandRunner.run(Tool.dscl, ["/Search/Contacts", "-delete", ".", "CSPSearchPath", path])
+            _ = CommandRunner.run(Tool.dscl, ["/Search", "-delete", ".", "CSPSearchPath", path])
+        }
+        if !adPaths.isEmpty {
+            if searchPaths().contains(where: SearchPathFilter.isActiveDirectory) {
+                return .warning("AD is still in the search path.")
+            }
+            notes.append("AD path removed")
+        }
+        for node in ["/Search", "/Search/Contacts"] {
+            let policy = CommandRunner.run(Tool.dscl, [node, "-read", ".", "SearchPolicy"]).output
+            guard !policy.contains(automatic) else { continue }
+            let change = CommandRunner.run(Tool.dscl, [node, "-change", ".", "SearchPolicy", "dsAttrTypeStandard:CSPSearchPath", automatic])
+            if !change.succeeded { return .warning("Could not set \(node) to Automatic: \(change.output)") }
+            notes.append("\(node) set to Automatic")
+        }
+        return .success(notes.isEmpty ? "Already clean" : notes.joined(separator: "; "))
     }
 
     /// Removes only AD entries. ShadowHash, SecureToken and the local (LKDC) Kerberos entry stay,
@@ -261,6 +289,15 @@ nonisolated enum AccountOperations {
         return result.succeeded ? .success("Removed") : .warning(result.output)
     }
 
+    private static func grantAdmin(_ context: MigrationContext) -> StepOutcome {
+        guard !groupValues("admin", "GroupMembership").contains(context.user) else { return .success("Already an admin") }
+        let result = CommandRunner.run(Tool.dseditgroup, ["-o", "edit", "-a", context.user, "-t", "user", "admin"])
+        guard result.succeeded else { return .warning(result.output) }
+        return groupValues("admin", "GroupMembership").contains(context.user)
+            ? .success("Added to admin")
+            : .warning("The admin group doesn't list \(context.user) after the change.")
+    }
+
     private static func fixHomeOwnership(_ context: MigrationContext) -> StepOutcome {
         guard FileManager.default.fileExists(atPath: context.homeDirectory) else {
             return .warning("Home folder not found at \(context.homeDirectory).")
@@ -295,9 +332,12 @@ nonisolated enum AccountOperations {
             if !result.succeeded { return protectedFilesOutcome(result, success: "") }
             notes.append("mode 755")
         }
-        if !home.hasDenyDeleteACL {
-            let result = CommandRunner.runWithRetry(Tool.chmod, ["+a", HomeState.freshACL, context.homeDirectory])
-            if !result.succeeded { return protectedFilesOutcome(result, success: "") }
+        if !home.hasStockACL {
+            // Remove every ACL first (stale domain entries), then add the stock one.
+            let strip = CommandRunner.runWithRetry(Tool.chmod, ["-N", context.homeDirectory])
+            if !strip.succeeded { return protectedFilesOutcome(strip, success: "") }
+            let add = CommandRunner.runWithRetry(Tool.chmod, ["+a", HomeState.freshACL, context.homeDirectory])
+            if !add.succeeded { return protectedFilesOutcome(add, success: "") }
             notes.append("ACL")
         }
         let publicFolder = context.homeDirectory + "/Public"
@@ -341,7 +381,8 @@ nonisolated enum AccountOperations {
         let findings = FreshAccountProfile.findings(
             snapshot: snapshot, machineBound: isMachineBound(), home: homeState(context.homeDirectory),
             adminNestedGroups: groupValues("admin", "NestedGroups"),
-            staffMembers: groupValues("staff", "GroupMembership"), userName: context.user
+            staffMembers: groupValues("staff", "GroupMembership"), userName: context.user,
+            searchPaths: searchPaths()
         )
         if findings.isEmpty { return .success("Matches a fresh local account") }
         return .warning(findings.map(\.message).joined(separator: " "))
