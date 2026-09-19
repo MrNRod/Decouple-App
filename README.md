@@ -4,12 +4,14 @@
 
 ## Features
 
-*   **Automated Unbind:** Force unbinds the Mac from Active Directory.
-*   **Attribute Cleanup:** Removes over 30+ AD-specific attributes (e.g., `CachedGroups`, `OriginalNodeName`, `SMBPrimaryGroupSID`) to prevent "zombie" AD behavior.
-*   **Surgical Auth Fix:** "Surgically" removes `Kerberosv5` and `LocalCachedUser` tokens from the `AuthenticationAuthority` without destroying the local `ShadowHash` or `SecureToken`.
-*   **Permission Reset:** Recursively fixes ownership (`chown`) and permissions (`chmod`) on the user's home directory to match standard macOS defaults (700 for home, 755 for Public).
+*   **Automated Unbind:** Force unbinds the Mac from Active Directory and verifies it.
+*   **Attribute Cleanup:** Removes AD-specific attributes (e.g., `CachedGroups`, `OriginalNodeName`, `SMBSID`) to prevent "zombie" AD behavior. Only attributes that are present are touched.
+*   **Surgical Auth Fix:** Removes the Active Directory `Kerberosv5` and `LocalCachedUser` entries from `AuthenticationAuthority`. The local `ShadowHash` (password), `SecureToken` (FileVault unlock) and the local `Kerberosv5 ... @LKDC` entry are never removed, so the local password and the FileVault login keep working.
+*   **Value-Level Cleanup:** Removes only AD values from `AltSecurityIdentities` and `RecordName` (`user@DOMAIN` aliases); an Apple Account's values are kept.
+*   **Fresh-Account Layout:** Resets the home folder to a stock macOS layout (mode 755, `everyone deny delete` ACL, group `staff`), moves files that carry the old AD primary group to `staff`, and sets `PrimaryGroupID` to 20.
 *   **Policy Reset:** Clears restrictive AD password policies (e.g., expiration dates).
 *   **Search Path Cleanup:** Removes Active Directory from the system's CSP search paths.
+*   **Backup and Verification:** Saves the account record (without the password hash) before any change, and finishes by comparing the account against a fresh local account.
 
 ## Requirements
 
@@ -24,6 +26,18 @@
 2.  Launch `ADToLocal.app`.
 3.  The app will detect the current user and run pre-flight checks.
 4.  If the user is a Mobile account, the migration process will start automatically.
+5.  **Restart** the Mac when it finishes. This confirms the local password and the FileVault login still work.
+
+**Launch flags:**
+
+| Flag | Effect |
+| :--- | :--- |
+| `--verify` | Read-only. Lists what differs from a fresh local account and changes nothing. Doesn't need administrator rights. |
+| `--no-autostart` | Analyzes and shows the plan, then waits for **Start Migration**. |
+
+**Files written** (root-only, `0600`): `/private/var/log/ad_to_local_migration.log` and `/private/var/log/ad_to_local_backup_<user>_<timestamp>.plist` (the account record before the change).
+
+**UID:** the account keeps its UID. Mobile accounts often have a large AD-mapped UID, while a fresh local account gets 501 or higher. Keeping it means no file ownership changes.
 
 ### MDM / Automated Deployment
 You can deploy this tool via any MDM (Workspace ONE,Jamf, Kandji, Mosyle, etc.).
@@ -68,12 +82,18 @@ If this key is set, the app will migrate the specified user instead of the user 
 
 ## How It Works
 
-1.  **Detection:** Checks `AuthenticationAuthority` for "Active Directory" or "LocalCachedUser" flags.
-2.  **Unbind:** Runs `dsconfigad -remove -force`.
-3.  **Attribute Removal:** Iterates through a list of known AD attributes (e.g., `CopyTimestamp`, `AltSecurityIdentities`) and deletes them using `dscl`.
-4.  **Auth Authority Fix:** Reads the plist data of the user's authority, identifies the specific AD strings, and removes them surgically.
-5.  **Home Directory:** Detects the *real* home directory path (handling non-standard locations) and resets ownership to `user:staff`.
-6.  **Cleanup:** Destroys Kerberos tickets (`kdestroy`) and restarts Directory Services (`killall opendirectoryd`).
+1.  **Detection:** Reads the account record and compares it to a fresh local account: AD entries in `AuthenticationAuthority`, leftover AD attributes, domain aliases, group, home folder, and the bind state. Only the steps that are needed are run.
+2.  **Backup:** Saves the account record before any change.
+3.  **Unbind:** Runs `dsconfigad -remove -force` and verifies it.
+4.  **Auth Authority Fix:** Removes only the AD entries. Aborts if the `SecureToken` or FileVault crypto-user entry disappears.
+5.  **Attribute Removal:** Deletes the AD attributes that are present, using `dscl`.
+6.  **Home Directory:** Detects the *real* home directory path (handling non-standard locations) and resets it to a stock layout.
+7.  **Cleanup:** Destroys the user's Kerberos tickets (`kdestroy`, run in the user's session) and restarts Directory Services (`killall opendirectoryd`).
+8.  **Verification:** Compares the result with a fresh local account and reports any difference as a warning.
+
+## Development
+
+The decision logic is in `ADToLocal/AccountLogic.swift` and has no system dependencies. Run its tests with `swift test`.
 
 ## Disclaimer
 
