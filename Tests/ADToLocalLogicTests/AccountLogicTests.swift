@@ -322,3 +322,35 @@ private func findings(
         #expect(StepAction.unbindMachine.policy == .warnOnFailure)
     }
 }
+
+// MARK: - swiftDialog commands
+
+@Suite struct DialogCommandTests {
+    @Test func formatsListItemUpdates() {
+        #expect(DialogCommands.listItem(index: 2, status: .success, text: "Done")
+                == "listitem: index: 2, status: success, statustext: Done")
+    }
+
+    /// Text is untrusted (command output). It must not add a field, a line, or a command.
+    @Test func sanitizingKeepsTextOnOneLineWithoutSeparators() {
+        let line = DialogCommands.listItem(index: 0, status: .fail, text: "bad, status: success\nquit:")
+        #expect(!line.contains("\n"))
+        #expect(line.components(separatedBy: ",").count == 3)   // index, status, statustext only
+        #expect(DialogCommands.sanitize("a\r\nb") == "a  b")
+    }
+
+    @Test func longTextIsTruncated() {
+        #expect(DialogCommands.sanitize(String(repeating: "x", count: 500)).count == 140)
+    }
+
+    @Test func messageEncodesLineBreaks() {
+        #expect(DialogCommands.message("one\ntwo") == "message: one\\ntwo")
+    }
+
+    @Test func launchArgumentsListEveryStep() {
+        let args = DialogCommands.launchArguments(title: "T", message: "M", items: ["A", "B"], commandFile: "/tmp/x")
+        #expect(args.filter { $0 == "--listitem" }.count == 2)
+        #expect(args[args.firstIndex(of: "--progress")! + 1] == "2")
+        #expect(args[args.firstIndex(of: "--commandfile")! + 1] == "/tmp/x")
+    }
+}

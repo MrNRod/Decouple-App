@@ -13,6 +13,21 @@ struct ContentView: View {
     @State private var confirmRestart = false
 
     var body: some View {
+        Group {
+            if viewModel.usesDialog {
+                // swiftDialog is the UI; this window stays hidden.
+                Color.clear.frame(width: 1, height: 1).background(WindowAccessor(isBusy: false, isHidden: true))
+            } else {
+                mainContent
+            }
+        }
+        .task {
+            await viewModel.prepare()
+            if viewModel.autoStart { viewModel.startMigration() }
+        }
+    }
+
+    private var mainContent: some View {
         VStack(spacing: 16) {
             VStack(spacing: 4) {
                 Text(viewModel.mode == .verifyOnly ? "AD to Local Verification" : "AD to Local Migration")
@@ -50,10 +65,6 @@ struct ContentView: View {
         .padding()
         .frame(minWidth: 500, idealWidth: 500, minHeight: 500, idealHeight: 500)
         .background(WindowAccessor(isBusy: viewModel.isRunning))
-        .task {
-            await viewModel.prepare()
-            if viewModel.autoStart { viewModel.startMigration() }
-        }
         .confirmationDialog("Restart this Mac now?", isPresented: $confirmRestart) {
             Button("Restart Now", role: .destructive) { viewModel.restart() }
             Button("Cancel", role: .cancel) {}
@@ -267,6 +278,7 @@ struct VerificationResultView: View {
 struct WindowAccessor: NSViewRepresentable {
     /// While the migration runs the window can't be closed, and it stays above other windows.
     let isBusy: Bool
+    var isHidden = false
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -279,6 +291,10 @@ struct WindowAccessor: NSViewRepresentable {
     }
 
     private func configure(_ window: NSWindow?) {
+        if isHidden {
+            window?.orderOut(nil)
+            return
+        }
         window?.level = .floating
         window?.standardWindowButton(.closeButton)?.isEnabled = !isBusy
     }

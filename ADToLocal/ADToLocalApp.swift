@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// Command-line flags that are passed on to the elevated copy of the app.
-private let forwardedFlags: Set<String> = ["--verify", "--no-autostart"]
+private let forwardedFlags: Set<String> = ["--verify", "--no-autostart", "--swiftdialog"]
 
 func relaunchAsRoot(arguments: [String] = CommandLine.arguments) {
     guard geteuid() != 0, let executablePath = Bundle.main.executablePath else { return }

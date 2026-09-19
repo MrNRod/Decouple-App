@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -27,6 +28,8 @@ final class MigrationViewModel {
     let user: String
     let mode: Mode
     let autoStart: Bool
+    /// Shows progress in swiftDialog instead of the SwiftUI window (`--swiftdialog`, if it's installed).
+    let usesDialog: Bool
 
     private(set) var phase: Phase = .analyzing
     private(set) var steps: [MigrationStep] = []
@@ -35,11 +38,14 @@ final class MigrationViewModel {
 
     @ObservationIgnored private var analysis: SystemAnalysis?
     @ObservationIgnored private var hasPrepared = false
+    @ObservationIgnored private var dialog: SwiftDialogPresenter?
 
     init(arguments: [String] = CommandLine.arguments) {
         user = TargetAccount.resolve()
         mode = arguments.contains("--verify") ? .verifyOnly : .migrate
-        autoStart = !arguments.contains("--no-autostart")
+        usesDialog = arguments.contains("--swiftdialog") && SwiftDialogPresenter.isInstalled
+        // The dialog has no start button, so it always runs straight through.
+        autoStart = usesDialog || !arguments.contains("--no-autostart")
     }
 
     var isRunning: Bool { phase == .running }
@@ -63,6 +69,7 @@ final class MigrationViewModel {
         guard UsernameValidator.isValid(user) else {
             append("Refusing to continue: '\(user)' is not a valid account name.")
             phase = .failed("Invalid target user name.\nCheck the enrollmentUser setting.")
+            presentResult(title: "Migration Not Started", message: "Invalid target user name. Check the enrollmentUser setting.")
             return
         }
         append("Analyzing system state for user: \(user)...")
@@ -72,6 +79,7 @@ final class MigrationViewModel {
         guard let result = await offMain({ AccountOperations.analyze(user: name) }) else {
             append("The account '\(user)' does not exist.")
             phase = .failed("The account '\(user)' was not found.")
+            presentResult(title: "Migration Not Started", message: "The account '\(user)' was not found.")
             return
         }
         analysis = result
@@ -83,15 +91,21 @@ final class MigrationViewModel {
 
         if mode == .verifyOnly {
             phase = .verified
+            presentResult(
+                title: findings.isEmpty ? "Matches a Fresh Local Account" : "\(findings.count) Difference(s) Found",
+                message: findings.isEmpty ? "No Active Directory traces were found." : findings.map { "- \($0.message)" }.joined(separator: "\n") + "\n\nNothing was changed."
+            )
             return
         }
         if result.plan.isEmpty {
             append("No actions required.")
             phase = .clean
+            presentResult(title: "Already a Local Account", message: "No Active Directory traces were found. Nothing to change.")
             return
         }
         steps = result.plan.map { MigrationStep(action: $0) }
         phase = .ready
+        if usesDialog { openDialog(items: steps.map(\.name)) }
     }
 
     // MARK: - Execution
@@ -110,6 +124,10 @@ final class MigrationViewModel {
         Task {
             for index in steps.indices {
                 steps[index].status = .running
+                dialog?.send(
+                    DialogCommands.listItem(index: index, status: .wait, text: "Running"),
+                    DialogCommands.progressText(steps[index].name)
+                )
                 let action = steps[index].action
                 let outcome = await offMain { AccountOperations.execute(action, context: context) }
 
@@ -131,6 +149,12 @@ final class MigrationViewModel {
             append(hasWarnings ? "--- MIGRATION COMPLETED WITH WARNINGS ---" : "--- ALL TASKS COMPLETED SUCCESSFULLY ---")
             AppLog.write("--- Migration finished (warnings: \(hasWarnings)) ---")
             phase = .completed(hasWarnings: hasWarnings)
+            dialogFinish(
+                title: hasWarnings ? "Completed With Warnings" : "Migration Successful",
+                message: hasWarnings
+                    ? "Review the steps marked with a warning. Details: \(AppLog.path)"
+                    : "\(user) is now a local account.\nRestart this Mac to confirm the login still works."
+            )
         }
     }
 
@@ -144,6 +168,10 @@ final class MigrationViewModel {
     private func finish(_ index: Int, _ status: MigrationStatus, _ message: String) {
         steps[index].status = status
         steps[index].outputLog = message
+        dialog?.send(
+            DialogCommands.listItem(index: index, status: status.dialogStatus, text: message),
+            DialogCommands.progress(steps.filter { $0.status != .pending && $0.status != .running }.count)
+        )
         append("[\(steps[index].name)]\(status == .warning ? " [WARNING]" : ""): \(message)")
     }
 
@@ -151,6 +179,36 @@ final class MigrationViewModel {
         append("CRITICAL ERROR: \(message)")
         AppLog.write("CRITICAL ERROR: \(message)")
         phase = .failed(message)
+        presentResult(title: "Migration Failed", message: message)
+    }
+
+    // MARK: - swiftDialog
+
+    private func openDialog(items: [String]) {
+        guard dialog == nil else { return }
+        let presenter = SwiftDialogPresenter()
+        let started = presenter.start(
+            title: "AD to Local Migration",
+            message: "Converting \(user) to a local account.\nDo not restart or power off this Mac.",
+            items: items,
+            consoleUID: TargetAccount.consoleUID()
+        ) {
+            // The user closed the dialog (its button is only enabled once the run is over).
+            Task { @MainActor in NSApplication.shared.terminate(nil) }
+        }
+        if started { dialog = presenter } else { append("Could not start swiftDialog.") }
+    }
+
+    /// A result with no step list (clean, verify, early failure).
+    private func presentResult(title: String, message: String) {
+        guard usesDialog else { return }
+        openDialog(items: [])
+        dialogFinish(title: title, message: message)
+    }
+
+    private func dialogFinish(title: String, message: String) {
+        dialog?.send([DialogCommands.title(title), DialogCommands.message(message), DialogCommands.progressText(title)]
+                     + DialogCommands.button("Close", enabled: true))
     }
 
     private func append(_ message: String) {

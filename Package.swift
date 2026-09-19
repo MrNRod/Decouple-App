@@ -7,7 +7,7 @@ let package = Package(
     name: "ADToLocalLogic",
     platforms: [.macOS(.v14)],
     targets: [
-        .target(name: "ADToLocalLogic", path: "ADToLocal", sources: ["AccountLogic.swift"]),
+        .target(name: "ADToLocalLogic", path: "ADToLocal", sources: ["AccountLogic.swift", "DialogCommands.swift"]),
         .testTarget(name: "ADToLocalLogicTests", dependencies: ["ADToLocalLogic"])
     ],
     swiftLanguageModes: [.v5]
