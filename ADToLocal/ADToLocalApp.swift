@@ -7,49 +7,42 @@
 
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Set the window level to floating to keep it on top of other windows
-        DispatchQueue.main.async {
-            NSApplication.shared.windows.forEach { window in
-                window.level = .floating
-            }
-        }
-    }
-
+final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if let viewModel = MigrationViewModel.shared, viewModel.isRunning {
-            return .terminateCancel
-        }
-        return .terminateNow
+        // Quitting mid-migration would leave the account half converted.
+        MigrationViewModel.shared?.isRunning == true ? .terminateCancel : .terminateNow
     }
 }
 
-func relaunchAsRoot() {
-    let euid = geteuid()
-    if euid != 0 {
-        guard let executablePath = Bundle.main.executablePath else { return }
-        let script = "do shell script \"\\\"\(executablePath)\\\" &> /dev/null &\" with administrator privileges"
-        
-        let appleScript = NSAppleScript(source: script)
-        var error: NSDictionary?
-        appleScript?.executeAndReturnError(&error)
-        
-        if error != nil {
-            print("Failed to relaunch as root: \(String(describing: error))")
-        } else {
-            NSApplication.shared.terminate(nil)
-        }
+/// Command-line flags that are passed on to the elevated copy of the app.
+private let forwardedFlags: Set<String> = ["--verify", "--no-autostart"]
+
+func relaunchAsRoot(arguments: [String] = CommandLine.arguments) {
+    guard geteuid() != 0, let executablePath = Bundle.main.executablePath else { return }
+    let flags = arguments.dropFirst().filter { forwardedFlags.contains($0) }
+    let command = ([executablePath] + flags).map { "\\\"\($0)\\\"" }.joined(separator: " ")
+    let script = "do shell script \"\(command) &> /dev/null &\" with administrator privileges"
+
+    var error: NSDictionary?
+    NSAppleScript(source: script)?.executeAndReturnError(&error)
+
+    if let error {
+        print("Failed to relaunch as root: \(error)")
+    } else {
+        NSApplication.shared.terminate(nil)
     }
 }
 
 @main
 struct ADToLocalApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        relaunchAsRoot()
+        NSApplication.shared.activate()
+        // Verification only reads, so it doesn't need an administrator prompt.
+        if !CommandLine.arguments.contains("--verify") {
+            relaunchAsRoot()
+        }
     }
 
     var body: some Scene {

@@ -8,25 +8,65 @@
 import Foundation
 import SystemConfiguration
 
-// MARK: - Shared Models (Moved here to fix Scope errors)
-enum MigrationStatus {
+// MARK: - Step Models
+
+nonisolated enum MigrationStatus: Sendable {
     case pending
     case running
     case success
-    case failure
     case warning
+    case failure
 }
-struct MigrationStep: Identifiable {
+
+nonisolated struct MigrationStep: Identifiable, Sendable {
     let id = UUID()
-    let name: String
-    let command: String
+    let action: StepAction
     var status: MigrationStatus = .pending
     var outputLog: String = ""
+
+    var name: String { action.title }
 }
-// MARK: - Script Configuration
-class ScriptConfig {
-    static var User: String = ""
-    static let LogFile = "/private/var/log/ad_to_local_migration.log"
+
+nonisolated enum StepOutcome: Sendable {
+    case success(String)
+    case warning(String)
+    case failure(String)
+}
+
+/// Facts captured before the first change, needed by later steps.
+nonisolated struct MigrationContext: Sendable {
+    let user: String
+    let uid: Int
+    let homeDirectory: String
+    let originalPrimaryGroupID: Int?
+    let generatedUID: String?
+    let hadSecureToken: Bool
+    let fileVaultEnabled: Bool
+    let cryptoUsersBefore: Set<String>
+}
+
+/// Everything read from the system before deciding what to do.
+nonisolated struct SystemAnalysis: Sendable {
+    let snapshot: AccountSnapshot
+    let machineBound: Bool
+    let home: HomeState?
+    let adminNestedGroups: [String]
+    let staffMembers: [String]
+    let context: MigrationContext
+    let findings: [Finding]
+    let plan: [StepAction]
+}
+
+// MARK: - Target Account
+
+nonisolated enum TargetAccount {
+    /// The account to convert: the `enrollmentUser` managed preference, else the console user.
+    static func resolve() -> String {
+        if let configured = UserDefaults.standard.string(forKey: "enrollmentUser"), !configured.isEmpty {
+            return configured
+        }
+        return consoleUser()
+    }
 
     /// The user who is actually logged in at the console.
     /// After `relaunchAsRoot()` the process user is `root`, so `NSUserName()` can't be used.
@@ -36,77 +76,5 @@ class ScriptConfig {
             return name
         }
         return NSUserName()
-    }
-}
-// MARK: - Logging
-class ScriptLogger {
-    static func ScriptLogging(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let logEntry = "\(timestamp): \(message)\n"
-        print(logEntry, terminator: "")
-        let fileURL = URL(fileURLWithPath: ScriptConfig.LogFile)
-        do {
-            if !FileManager.default.fileExists(atPath: ScriptConfig.LogFile) {
-                try "".write(to: fileURL, atomically: true, encoding: .utf8)
-            }
-            let handle = try FileHandle(forWritingTo: fileURL)
-            handle.seekToEndOfFile()
-            if let data = logEntry.data(using: .utf8) {
-                handle.write(data)
-            }
-            handle.closeFile()
-        } catch {
-            print("Error writing to log: \(error)")
-        }
-    }
-}
-// MARK: - Shell Execution
-class Shell {
-    static func execute(_ command: String) -> (Int32, String) {
-        let task = Process()
-        let pipe = Pipe()
-        task.executableURL = URL(fileURLWithPath: "/bin/bash")
-        task.arguments = ["-c", command]
-        task.standardOutput = pipe
-        task.standardError = pipe
-        do {
-            try task.run()
-        } catch {
-            return (-1, "Failed to launch: \(error)")
-        }
-        // Drain the pipe before waiting: a child that fills the 64 KB pipe buffer
-        // blocks on write and would never exit while we sit in waitUntilExit().
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
-        let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return (task.terminationStatus, output)
-    }
-
-    static func executeWithRetry(_ command: String, maxRetries: Int = 5, delay: UInt32 = 2) -> (Int32, String) {
-        var attempts = 0
-        var result: (Int32, String) = (-1, "")
-        
-        repeat {
-            attempts += 1
-            result = execute(command)
-            
-            // If success, return immediately
-            if result.0 == 0 { return result }
-            
-            // Check for specific interruption errors
-            // "Interrupted system call" is the standard message for EINTR
-            if result.1.localizedCaseInsensitiveContains("Interrupted system call") || result.1.localizedCaseInsensitiveContains("fts_read") {
-                ScriptLogger.ScriptLogging("Command interrupted (Attempt \(attempts)/\(maxRetries)). Retrying in \(delay)s...")
-                sleep(delay)
-            } else {
-                // If it's a different error (e.g. Permission Denied), retrying likely won't help.
-                // Return the result immediately.
-                return result
-            }
-            
-        } while attempts < maxRetries
-        
-        ScriptLogger.ScriptLogging("Command failed after \(maxRetries) attempts.")
-        return result
     }
 }
