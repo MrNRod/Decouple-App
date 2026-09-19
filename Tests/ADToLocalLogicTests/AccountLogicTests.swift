@@ -28,7 +28,7 @@ private let freshLocal: [String: [String]] = [
     "dsAttrTypeStandard:AltSecurityIdentities": ["X509:<T>CN=Apple Root CA<S>CN=com.apple.idms.appleid.prd.1"]
 ]
 
-private let cleanHome = HomeState(exists: true, mode: 0o755, groupID: 20, hasDenyDeleteACL: true)
+private let cleanHome = HomeState(exists: true, mode: 0o755, groupID: 20, hasStockACL: true)
 
 private func findings(
     _ snapshot: AccountSnapshot,
@@ -221,13 +221,13 @@ private func findings(
 @Suite struct HomeAndGroupTests {
     @Test func flagsWrongHomeModeAclAndGroup() throws {
         let account = try snapshot(freshLocal)
-        let bad = HomeState(exists: true, mode: 0o750, groupID: 12345, hasDenyDeleteACL: false)
+        let bad = HomeState(exists: true, mode: 0o750, groupID: 12345, hasStockACL: false)
         #expect(findings(account, home: bad).count == 3)
     }
 
     @Test func missingHomeIsNotAFinding() throws {
         let account = try snapshot(freshLocal)
-        #expect(findings(account, home: HomeState(exists: false, mode: nil, groupID: nil, hasDenyDeleteACL: false)).isEmpty)
+        #expect(findings(account, home: HomeState(exists: false, mode: nil, groupID: nil, hasStockACL: false)).isEmpty)
     }
 
     @Test func staffMembershipAndNestedGroupsAreFlagged() throws {
@@ -282,7 +282,7 @@ private func findings(
         mobile["dsAttrTypeStandard:AuthenticationAuthority"] = [shadow, adKerberos, lkdc, cachedUser, secureToken]
         mobile["dsAttrTypeStandard:PrimaryGroupID"] = ["12"]
         mobile["dsAttrTypeStandard:SMBSID"] = ["S-1-5-21"]
-        let bad = HomeState(exists: true, mode: 0o750, groupID: 12, hasDenyDeleteACL: true)
+        let bad = HomeState(exists: true, mode: 0o750, groupID: 12, hasStockACL: true)
         #expect(try plan(mobile, bound: true, home: bad) == [
             .verifyUserExists, .backupAccount, .unbindMachine, .cleanSearchPaths,
             .fixAuthenticationAuthority, .removeADAttributes, .destroyKerberosTickets,
@@ -311,7 +311,7 @@ private func findings(
     @Test func missingHomeSkipsHomeSteps() throws {
         var mobile = freshLocal
         mobile["dsAttrTypeStandard:AuthenticationAuthority"] = [shadow, adKerberos]
-        let steps = try plan(mobile, home: HomeState(exists: false, mode: nil, groupID: nil, hasDenyDeleteACL: false))
+        let steps = try plan(mobile, home: HomeState(exists: false, mode: nil, groupID: nil, hasStockACL: false))
         #expect(!steps.contains(.fixHomeOwnership) && !steps.contains(.fixHomePermissions))
     }
 
@@ -320,5 +320,52 @@ private func findings(
         #expect(StepAction.fixAuthenticationAuthority.policy == .critical)
         #expect(StepAction.fixHomeContentGroups.policy == .warnOnFailure)
         #expect(StepAction.unbindMachine.policy == .warnOnFailure)
+    }
+}
+
+// MARK: - Stock ACL and admin option
+
+@Suite struct HomeAclAndAdminTests {
+    @Test func onlyTheStockAclCounts() {
+        let stock = "drwxr-xr-x+ 72 jdoe  staff  2304 Sep 18 22:12 /Users/jdoe\n 0: group:everyone deny delete\n"
+        #expect(HomeState.isStockACL(listing: stock))
+        #expect(!HomeState.isStockACL(listing: "drwxr-xr-x  72 jdoe  staff  2304 Sep 18 22:12 /Users/jdoe\n"))
+        // A leftover domain ACL next to the stock entry is not a fresh home.
+        let stale = stock + " 1: group:11111111-2222-3333-4444-555555555555 allow list,search\n"
+        #expect(!HomeState.isStockACL(listing: stale))
+        #expect(!HomeState.isStockACL(listing: "drwxr-xr-x+ 1 a b 1 Jan 1 /x\n 0: user:x allow read\n"))
+    }
+
+    @Test func staleAclIsAFindingAndPlansAPermissionsFix() throws {
+        let account = try snapshot(freshLocal)
+        let staleHome = HomeState(exists: true, mode: 0o755, groupID: 20, hasStockACL: false)
+        #expect(findings(account, home: staleHome).count == 1)
+        let steps = StepPlanner.plan(snapshot: account, machineBound: false, home: staleHome, adminNestedGroups: [],
+                                     staffMembers: ["root"], userName: "jdoe")
+        #expect(steps == [.verifyUserExists, .backupAccount, .fixHomePermissions, .restartDirectoryServices, .verifyAccount])
+    }
+
+    private func mobilePlan(grantAdmin: Bool, admins: [String] = []) throws -> [StepAction] {
+        var mobile = freshLocal
+        mobile["dsAttrTypeStandard:AuthenticationAuthority"] = [shadow, adKerberos, lkdc, secureToken]
+        return StepPlanner.plan(snapshot: try snapshot(mobile), machineBound: false, home: cleanHome, adminNestedGroups: [],
+                                staffMembers: ["root"], userName: "jdoe", grantAdmin: grantAdmin, adminMembers: admins)
+    }
+
+    @Test func adminIsOffByDefault() throws {
+        #expect(!(try mobilePlan(grantAdmin: false)).contains(.grantAdmin))
+    }
+
+    @Test func adminIsGrantedWhenAskedAndNotAlreadyAdmin() throws {
+        #expect(try mobilePlan(grantAdmin: true).contains(.grantAdmin))
+        #expect(!(try mobilePlan(grantAdmin: true, admins: ["root", "jdoe"])).contains(.grantAdmin))
+    }
+
+    /// The option applies to a conversion. A clean local account is left alone.
+    @Test func adminAloneDoesNotStartAMigration() throws {
+        let steps = StepPlanner.plan(snapshot: try snapshot(freshLocal), machineBound: false, home: cleanHome,
+                                     adminNestedGroups: [], staffMembers: ["root"], userName: "jdoe",
+                                     grantAdmin: true, adminMembers: ["root"])
+        #expect(steps.isEmpty)
     }
 }

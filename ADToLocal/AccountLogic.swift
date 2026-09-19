@@ -240,11 +240,20 @@ nonisolated struct HomeState: Sendable, Equatable {
     var exists: Bool
     var mode: Int?
     var groupID: Int?
-    var hasDenyDeleteACL: Bool
+    /// The ACL is exactly the stock entry, with nothing else (such as an old domain ACL).
+    var hasStockACL: Bool
 
     /// A stock macOS home: `drwxr-xr-x+` with `group:everyone deny delete`, group `staff`.
     static let freshMode = 0o755
     static let freshACL = "group:everyone deny delete"
+
+    /// `listing` is `ls -lde <home>`; ACL entries print as " 0: group:everyone deny delete".
+    static func isStockACL(listing: String) -> Bool {
+        let entries = listing.split(separator: "\n").filter {
+            $0.range(of: #"^\s*\d+:\s"#, options: .regularExpression) != nil
+        }
+        return entries.count == 1 && entries[0].contains(freshACL)
+    }
 }
 
 nonisolated struct Finding: Sendable, Equatable {
@@ -288,7 +297,7 @@ nonisolated enum FreshAccountProfile {
             if let mode = home.mode, mode != HomeState.freshMode {
                 add("Home folder mode is \(String(mode, radix: 8)), a fresh account uses \(String(HomeState.freshMode, radix: 8)).")
             }
-            if !home.hasDenyDeleteACL { add("Home folder is missing the standard 'everyone deny delete' ACL.") }
+            if !home.hasStockACL { add("Home folder ACL isn't just the standard 'everyone deny delete' entry.") }
             if let gid = home.groupID, gid != AccountSnapshot.freshPrimaryGroupID {
                 add("Home folder group is \(gid), a fresh account uses staff (\(AccountSnapshot.freshPrimaryGroupID)).")
             }
@@ -318,6 +327,7 @@ nonisolated enum StepAction: Sendable, Equatable {
     case clearAccountPolicies
     case destroyKerberosTickets
     case removeStaffMembership
+    case grantAdmin
     case fixHomeOwnership
     case fixHomeContentGroups
     case fixHomePermissions
@@ -338,6 +348,7 @@ nonisolated enum StepAction: Sendable, Equatable {
         case .clearAccountPolicies: "Clear AD Password Policies"
         case .destroyKerberosTickets: "Destroy Kerberos Tickets"
         case .removeStaffMembership: "Remove Explicit Staff Membership"
+        case .grantAdmin: "Grant Admin Rights"
         case .fixHomeOwnership: "Reset Home Folder Ownership"
         case .fixHomeContentGroups: "Reset Group on Home Contents"
         case .fixHomePermissions: "Reset Home Folder Permissions"
@@ -364,7 +375,9 @@ nonisolated enum StepPlanner {
         home: HomeState?,
         adminNestedGroups: [String],
         staffMembers: [String],
-        userName: String
+        userName: String,
+        grantAdmin: Bool = false,
+        adminMembers: [String] = []
     ) -> [StepAction] {
         let traces = FreshAccountProfile.findings(
             snapshot: snapshot, machineBound: machineBound, home: home,
@@ -383,6 +396,8 @@ nonisolated enum StepPlanner {
         if !snapshot.extraPolicyKeys.isEmpty { steps.append(.clearAccountPolicies) }
         if isMobile { steps.append(.destroyKerberosTickets) }
         if staffMembers.contains(userName) { steps.append(.removeStaffMembership) }
+        // Opt-in (the grantAdmin preference). A fresh local account isn't an admin unless asked to be.
+        if grantAdmin, !adminMembers.contains(userName) { steps.append(.grantAdmin) }
 
         let originalGroup = snapshot.primaryGroupID ?? AccountSnapshot.freshPrimaryGroupID
         let groupIsWrong = originalGroup != AccountSnapshot.freshPrimaryGroupID
@@ -391,7 +406,7 @@ nonisolated enum StepPlanner {
                 steps.append(.fixHomeOwnership)
             }
             if groupIsWrong { steps.append(.fixHomeContentGroups) }
-            if home.mode != HomeState.freshMode || !home.hasDenyDeleteACL { steps.append(.fixHomePermissions) }
+            if home.mode != HomeState.freshMode || !home.hasStockACL { steps.append(.fixHomePermissions) }
         }
         if groupIsWrong { steps.append(.resetPrimaryGroup) }
 

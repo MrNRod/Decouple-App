@@ -8,9 +8,9 @@
 *   **Attribute Cleanup:** Removes AD-specific attributes (e.g., `CachedGroups`, `OriginalNodeName`, `SMBSID`) to prevent "zombie" AD behavior. Only attributes that are present are touched.
 *   **Surgical Auth Fix:** Removes the Active Directory `Kerberosv5` and `LocalCachedUser` entries from `AuthenticationAuthority`. The local `ShadowHash` (password), `SecureToken` (FileVault unlock) and the local `Kerberosv5 ... @LKDC` entry are never removed, so the local password and the FileVault login keep working.
 *   **Value-Level Cleanup:** Removes only AD values from `AltSecurityIdentities` and `RecordName` (`user@DOMAIN` aliases); an Apple Account's values are kept.
-*   **Fresh-Account Layout:** Resets the home folder to a stock macOS layout (mode 755, `everyone deny delete` ACL, group `staff`), moves files that carry the old AD primary group to `staff`, and sets `PrimaryGroupID` to 20.
+*   **Fresh-Account Layout:** Resets the home folder to a stock macOS layout (mode 755, only the `everyone deny delete` ACL, group `staff`), moves files that carry the old AD primary group to `staff`, and sets `PrimaryGroupID` to 20.
 *   **Policy Reset:** Clears restrictive AD password policies (e.g., expiration dates).
-*   **Search Path Cleanup:** Removes Active Directory from the system's CSP search paths.
+*   **Search Path Cleanup:** Removes Active Directory from the system's CSP search paths and sets the search policy back to Automatic.
 *   **Backup and Verification:** Saves the account record (without the password hash) before any change, and finishes by comparing the account against a fresh local account.
 
 ## Requirements
@@ -57,6 +57,7 @@ You can use a Configuration Profile to target a specific user other than the cur
 | Key | Type | Description |
 | :--- | :--- | :--- |
 | `enrollmentUser` | String | The short username of the account to migrate. **Recommended:** Use your MDM's variable (e.g., `{EnrollmentUser}`). |
+| `grantAdmin` | Boolean | Optional. `true` adds the converted user to the `admin` group. Default `false`: like a fresh local account, the user is not an admin. Only applies when an account is actually converted. |
 
 #### Example Mobileconfig Snippet:
 ```xml
