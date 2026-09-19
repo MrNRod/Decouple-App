@@ -79,6 +79,11 @@ nonisolated enum AltIdentityFilter {
     }
 }
 
+/// The search paths (`dscl /Search -read . CSPSearchPath`) of a Mac that was bound to AD.
+nonisolated enum SearchPathFilter {
+    static func isActiveDirectory(_ path: String) -> Bool { path.contains("Active Directory") }
+}
+
 /// AD mobile accounts carry `user@DOMAIN` aliases in `RecordName`. A fresh account has none.
 nonisolated enum RecordNameFilter {
     static func isDomainAlias(_ value: String) -> Bool {
@@ -267,12 +272,16 @@ nonisolated enum FreshAccountProfile {
         home: HomeState?,
         adminNestedGroups: [String],
         staffMembers: [String],
-        userName: String
+        userName: String,
+        searchPaths: [String] = []
     ) -> [Finding] {
         var findings: [Finding] = []
         func add(_ message: String) { findings.append(Finding(message: message)) }
 
         if machineBound { add("This Mac is still bound to Active Directory.") }
+        if searchPaths.contains(where: SearchPathFilter.isActiveDirectory) {
+            add("Active Directory is still in the search path.")
+        }
         if !snapshot.adAuthorityEntries.isEmpty {
             add("AuthenticationAuthority still has AD entries (\(snapshot.adAuthorityEntries.count)).")
         }
@@ -377,16 +386,20 @@ nonisolated enum StepPlanner {
         staffMembers: [String],
         userName: String,
         grantAdmin: Bool = false,
-        adminMembers: [String] = []
+        adminMembers: [String] = [],
+        searchPaths: [String] = []
     ) -> [StepAction] {
         let traces = FreshAccountProfile.findings(
             snapshot: snapshot, machineBound: machineBound, home: home,
-            adminNestedGroups: adminNestedGroups, staffMembers: staffMembers, userName: userName
+            adminNestedGroups: adminNestedGroups, staffMembers: staffMembers, userName: userName,
+            searchPaths: searchPaths
         )
         guard !traces.isEmpty else { return [] }
 
         var steps: [StepAction] = [.verifyUserExists, .backupAccount]
-        if machineBound { steps += [.unbindMachine, .cleanSearchPaths] }
+        if machineBound { steps.append(.unbindMachine) }
+        // Also when another tool already unbound the Mac and left AD in the search path.
+        if machineBound || searchPaths.contains(where: SearchPathFilter.isActiveDirectory) { steps.append(.cleanSearchPaths) }
 
         let isMobile = snapshot.isMobileAccount
         if isMobile { steps.append(.fixAuthenticationAuthority) }

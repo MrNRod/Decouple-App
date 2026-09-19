@@ -39,6 +39,13 @@ nonisolated enum AccountOperations {
         return result.succeeded ? AccountSnapshot(plistData: Data(result.output.utf8)) : nil
     }
 
+    /// The node comes first for search paths: `dscl /Search -read .` (not `dscl . -read /Search`).
+    static func searchPaths() -> [String] {
+        let result = CommandRunner.run(Tool.dscl, ["-plist", "/Search", "-read", ".", "CSPSearchPath"])
+        guard result.succeeded, let record = AccountSnapshot(plistData: Data(result.output.utf8)) else { return [] }
+        return record.values("CSPSearchPath")
+    }
+
     static func isMachineBound() -> Bool {
         CommandRunner.run(Tool.dsconfigad, ["-show"]).output.contains("Active Directory Domain")
     }
@@ -79,6 +86,7 @@ nonisolated enum AccountOperations {
         let nested = groupValues("admin", "NestedGroups")
         let staff = groupValues("staff", "GroupMembership")
         let admins = groupValues("admin", "GroupMembership")
+        let paths = searchPaths()
         let fileVault = fileVaultEnabled()
 
         let context = MigrationContext(
@@ -96,12 +104,12 @@ nonisolated enum AccountOperations {
             adminNestedGroups: nested, staffMembers: staff, context: context,
             findings: FreshAccountProfile.findings(
                 snapshot: snapshot, machineBound: bound, home: home,
-                adminNestedGroups: nested, staffMembers: staff, userName: user
+                adminNestedGroups: nested, staffMembers: staff, userName: user, searchPaths: paths
             ),
             plan: StepPlanner.plan(
                 snapshot: snapshot, machineBound: bound, home: home,
                 adminNestedGroups: nested, staffMembers: staff, userName: user,
-                grantAdmin: grantAdmin, adminMembers: admins
+                grantAdmin: grantAdmin, adminMembers: admins, searchPaths: paths
             )
         )
     }
@@ -179,14 +187,16 @@ nonisolated enum AccountOperations {
     /// Removes AD from the custom search paths and puts the search policy back to Automatic,
     /// which is what a Mac that was never bound has.
     private static func cleanSearchPaths() -> StepOutcome {
-        let path = "/Active Directory/All Domains"
         let automatic = "dsAttrTypeStandard:NSPSearchPath"
         var notes: [String] = []
 
-        if CommandRunner.run(Tool.dscl, ["/Search", "-read", ".", "CSPSearchPath"]).output.contains("Active Directory") {
+        let adPaths = searchPaths().filter(SearchPathFilter.isActiveDirectory)
+        for path in adPaths {
             _ = CommandRunner.run(Tool.dscl, ["/Search/Contacts", "-delete", ".", "CSPSearchPath", path])
             _ = CommandRunner.run(Tool.dscl, ["/Search", "-delete", ".", "CSPSearchPath", path])
-            if CommandRunner.run(Tool.dscl, ["/Search", "-read", ".", "CSPSearchPath"]).output.contains("Active Directory") {
+        }
+        if !adPaths.isEmpty {
+            if searchPaths().contains(where: SearchPathFilter.isActiveDirectory) {
                 return .warning("AD is still in the search path.")
             }
             notes.append("AD path removed")
@@ -371,7 +381,8 @@ nonisolated enum AccountOperations {
         let findings = FreshAccountProfile.findings(
             snapshot: snapshot, machineBound: isMachineBound(), home: homeState(context.homeDirectory),
             adminNestedGroups: groupValues("admin", "NestedGroups"),
-            staffMembers: groupValues("staff", "GroupMembership"), userName: context.user
+            staffMembers: groupValues("staff", "GroupMembership"), userName: context.user,
+            searchPaths: searchPaths()
         )
         if findings.isEmpty { return .success("Matches a fresh local account") }
         return .warning(findings.map(\.message).joined(separator: " "))

@@ -35,11 +35,12 @@ private func findings(
     bound: Bool = false,
     home: HomeState? = cleanHome,
     nested: [String] = [],
-    staff: [String] = ["root"]
+    staff: [String] = ["root"],
+    searchPaths: [String] = []
 ) -> [Finding] {
     FreshAccountProfile.findings(
         snapshot: snapshot, machineBound: bound, home: home,
-        adminNestedGroups: nested, staffMembers: staff, userName: "jdoe"
+        adminNestedGroups: nested, staffMembers: staff, userName: "jdoe", searchPaths: searchPaths
     )
 }
 
@@ -367,5 +368,26 @@ private func findings(
                                      adminNestedGroups: [], staffMembers: ["root"], userName: "jdoe",
                                      grantAdmin: true, adminMembers: ["root"])
         #expect(steps.isEmpty)
+    }
+}
+
+// MARK: - Search paths
+
+@Suite struct SearchPathTests {
+    @Test func matchesAnyActiveDirectoryPath() {
+        #expect(SearchPathFilter.isActiveDirectory("/Active Directory/All Domains"))
+        #expect(SearchPathFilter.isActiveDirectory("/Active Directory/CORP/corp.example.com"))
+        #expect(!SearchPathFilter.isActiveDirectory("/Local/Default"))
+    }
+
+    @Test func aLeftoverADSearchPathIsCleanedEvenWhenUnbound() throws {
+        let account = try snapshot(freshLocal)
+        let paths = ["/Local/Default", "/Active Directory/CORP/corp.example.com"]
+        #expect(findings(account, searchPaths: paths).count == 1)
+        let steps = StepPlanner.plan(snapshot: account, machineBound: false, home: cleanHome, adminNestedGroups: [],
+                                     staffMembers: ["root"], userName: "jdoe", searchPaths: paths)
+        #expect(steps == [.verifyUserExists, .backupAccount, .cleanSearchPaths, .restartDirectoryServices, .verifyAccount])
+        // Not bound and nothing in the path: nothing to do.
+        #expect(findings(account, searchPaths: ["/Local/Default"]).isEmpty)
     }
 }
