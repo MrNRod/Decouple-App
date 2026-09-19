@@ -28,7 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 func relaunchAsRoot() {
     let euid = geteuid()
     if euid != 0 {
-        let executablePath = Bundle.main.executablePath!
+        guard let executablePath = Bundle.main.executablePath else { return }
         let script = "do shell script \"\\\"\(executablePath)\\\" &> /dev/null &\" with administrator privileges"
         
         let appleScript = NSAppleScript(source: script)

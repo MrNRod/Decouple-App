@@ -24,7 +24,7 @@ struct ContentView: View {
             
             Divider()
             if viewModel.hasError {
-                ErrorView(msg: "Please Contact IT Support.\nMigration Failed.")
+                ErrorView(msg: viewModel.errorMessage)
             } else if viewModel.isComplete {
                 SuccessView()
             } else {

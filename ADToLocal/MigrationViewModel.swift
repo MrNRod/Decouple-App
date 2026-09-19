@@ -6,6 +6,7 @@ class MigrationViewModel: ObservableObject {
     @Published var isRunning: Bool = false
     @Published var isComplete: Bool = false
     @Published var hasError: Bool = false
+    @Published var errorMessage: String = ""
     @Published var progress: Double = 0.0
     @Published var fullLogText: String = ""
     // Logic Flags
@@ -53,17 +54,23 @@ class MigrationViewModel: ObservableObject {
         if let enrollmentUser = UserDefaults.standard.string(forKey: "enrollmentUser"), !enrollmentUser.isEmpty {
             ScriptConfig.User = enrollmentUser
         } else {
-            ScriptConfig.User = NSUserName()
+            ScriptConfig.User = ScriptConfig.consoleUser()
         }
         // 2. Run Pre-Flight Analysis
         analyzeSystemState()
     }
     // MARK: - Pre-Flight Analysis
     private func analyzeSystemState() {
-        // 0. Check for Root
-        if getuid() != 0 {
-            self.logToUI("WARNING: App is not running as root. Detection may fail.")
-            self.logToUI("Please relaunch with 'sudo'.")
+        // 0. The user name is interpolated into commands that run as root. Reject anything odd.
+        guard UsernameValidator.isValid(ScriptConfig.User) else {
+            self.logToUI("Refusing to continue: '\(ScriptConfig.User)' is not a valid account name.")
+            self.errorMessage = "Invalid target user name.\nCheck the enrollmentUser setting."
+            self.hasError = true
+            return
+        }
+        // 1. Check for Root
+        if geteuid() != 0 {
+            self.logToUI("WARNING: App is not running as root. Migration can't run.")
         }
         self.logToUI("Analyzing system state for user: \(ScriptConfig.User)...")
         // Check 1: Is User Mobile?
@@ -141,8 +148,16 @@ class MigrationViewModel: ObservableObject {
     }
     // MARK: - Execution Logic
     func startMigration() {
-        guard !isRunning else { return }
+        guard !isRunning, !hasError else { return }
         if !isUserMobile && !isMachineBound { return }
+        // Check once, up front, instead of guessing from "Permission denied" in command output.
+        guard geteuid() == 0 else {
+            errorMessage = "Administrator privileges are required.\nRelaunch the app and approve the prompt."
+            hasError = true
+            logToUI("CRITICAL ERROR: not running as root.")
+            ScriptLogger.ScriptLogging("CRITICAL ERROR: not running as root.")
+            return
+        }
         isRunning = true
         hasError = false
         ScriptLogger.ScriptLogging("--- Starting Execution ---")
@@ -169,10 +184,6 @@ class MigrationViewModel: ObservableObject {
                     }
                 }
                 // ERROR HANDLING
-                if result.1.contains("Permission denied") {
-                     self.failStep(index: index, message: "CRITICAL: Run App as Root! (Permission Denied)")
-                     return
-                }
                 if result.0 != 0 {
                     // Ignore benign errors
                     let isAttributeDeletion = step.command.contains("dscl . -delete")
@@ -350,6 +361,7 @@ class MigrationViewModel: ObservableObject {
     private func failStep(index: Int, message: String) {
         DispatchQueue.main.async {
             self.steps[index].status = .failure
+            self.errorMessage = "Migration Failed.\nPlease contact IT Support."
             self.hasError = true
             self.isRunning = false
             self.logToUI("CRITICAL ERROR: \(message)")

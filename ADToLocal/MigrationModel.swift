@@ -6,6 +6,8 @@
 //
 
 import Foundation
+import SystemConfiguration
+
 // MARK: - Shared Models (Moved here to fix Scope errors)
 enum MigrationStatus {
     case pending
@@ -25,6 +27,16 @@ struct MigrationStep: Identifiable {
 class ScriptConfig {
     static var User: String = ""
     static let LogFile = "/private/var/log/ad_to_local_migration.log"
+
+    /// The user who is actually logged in at the console.
+    /// After `relaunchAsRoot()` the process user is `root`, so `NSUserName()` can't be used.
+    static func consoleUser() -> String {
+        if let name = SCDynamicStoreCopyConsoleUser(nil, nil, nil) as String?,
+           !name.isEmpty, name != "root", name != "loginwindow" {
+            return name
+        }
+        return NSUserName()
+    }
 }
 // MARK: - Logging
 class ScriptLogger {
@@ -53,7 +65,7 @@ class Shell {
     static func execute(_ command: String) -> (Int32, String) {
         let task = Process()
         let pipe = Pipe()
-        task.launchPath = "/bin/bash"
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-c", command]
         task.standardOutput = pipe
         task.standardError = pipe
@@ -62,8 +74,10 @@ class Shell {
         } catch {
             return (-1, "Failed to launch: \(error)")
         }
-        task.waitUntilExit()
+        // Drain the pipe before waiting: a child that fills the 64 KB pipe buffer
+        // blocks on write and would never exit while we sit in waitUntilExit().
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
         let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return (task.terminationStatus, output)
     }
