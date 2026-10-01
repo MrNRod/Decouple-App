@@ -95,9 +95,10 @@ nonisolated enum RecordNameFilter {
 
 nonisolated enum ADAttributes {
     /// Attributes an AD mobile account adds and a local account never has.
+    /// `AppleMetaRecordName` holds the AD distinguished name on a mobile account; a fresh one has none.
     /// Deliberately NOT here (a fresh account can legitimately have them):
     /// `AltSecurityIdentities` (value-filtered), `accountPolicyData` (cleared with pwpolicy),
-    /// `_writers_LinkedIdentity` (Apple Account), and the virtual `AppleMeta*` attributes.
+    /// `_writers_LinkedIdentity` (Apple Account), and `AppleMetaNodeLocation`.
     static let names: [String] = [
         "CachedGroups",
         "SMBPrimaryGroupSID",
@@ -124,7 +125,8 @@ nonisolated enum ADAttributes {
         "JobTitle",
         "Company",
         "Department",
-        "EMailAddress"
+        "EMailAddress",
+        "AppleMetaRecordName"
     ]
 
     private static let lookup = Set(names.map(normalized))
@@ -152,6 +154,10 @@ nonisolated struct AccountSnapshot: Sendable, Equatable {
         "creationTime", "failedLoginCount", "failedLoginTimestamp", "passwordLastSetTime"
     ]
     static let freshPrimaryGroupID = 20
+    static let freshShell = "/bin/zsh"
+    /// A fresh account has `_writers_<name>` for each, so the user can change their own picture,
+    /// input sources and unlock options. A mobile account doesn't. Permissions only, no data.
+    static let writerAttributes = ["AvatarRepresentation", "inputSources", "unlockOptions"]
 
     let attributes: [String: [String]]
 
@@ -199,12 +205,53 @@ nonisolated struct AccountSnapshot: Sendable, Equatable {
     /// A mobile account is one whose authority still points at Active Directory.
     var isMobileAccount: Bool { !adAuthorityEntries.isEmpty }
 
+    /// The shell AD assigned: `UserShell` still equals `original_shell` and isn't the fresh one.
+    /// A shell the user picked later is kept (nil).
+    var adAssignedShell: String? {
+        guard let shell = values("UserShell").first, let original = values("original_shell").first,
+              shell == original, shell != Self.freshShell else { return nil }
+        return shell
+    }
+
+    /// The `writerAttributes` without a `_writers_` key.
+    var missingWriters: [String] {
+        Self.writerAttributes.filter { attributes["dsAttrTypeNative:_writers_" + $0] == nil }
+    }
+
+    /// `accountPolicyData` as a dictionary. A mobile account stores it as a binary plist, which
+    /// `dscl -plist` (as root) prints as hex text ("62706c69 73743030 ..."); a fresh one as XML.
+    var accountPolicy: [String: Any]? {
+        guard let value = values("accountPolicyData").first else { return nil }
+        let data = Self.hexData(value) ?? Data(value.utf8)
+        return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any]
+    }
+
     /// Keys in `accountPolicyData` that a fresh account doesn't have (AD-imposed password rules).
     var extraPolicyKeys: [String] {
-        guard let xml = values("accountPolicyData").first,
-              let object = try? PropertyListSerialization.propertyList(from: Data(xml.utf8), format: nil),
-              let policy = object as? [String: Any] else { return [] }
-        return policy.keys.filter { !Self.allowedPolicyKeys.contains($0) }.sorted()
+        (accountPolicy ?? [:]).keys.filter { !Self.allowedPolicyKeys.contains($0) }.sorted()
+    }
+
+    /// The policy with only the keys a fresh account has, as XML (how a fresh account stores it).
+    /// Nil when there is no policy or nothing to remove.
+    var freshPolicyXML: String? {
+        guard let policy = accountPolicy, !extraPolicyKeys.isEmpty else { return nil }
+        let kept = policy.filter { Self.allowedPolicyKeys.contains($0.key) }
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: kept, format: .xml, options: 0) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Decodes dscl's hex text for a data value: groups of 8 hex digits (the last can be shorter).
+    static func hexData(_ text: String) -> Data? {
+        guard text.range(of: "^[0-9a-fA-F]{8}( [0-9a-fA-F]{2,8})*$", options: .regularExpression) != nil else { return nil }
+        let digits = Array(text.replacingOccurrences(of: " ", with: "").utf8)
+        guard digits.count.isMultiple(of: 2) else { return nil }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(digits.count / 2)
+        for index in stride(from: 0, to: digits.count, by: 2) {
+            guard let byte = UInt8(String(decoding: digits[index...index + 1], as: UTF8.self), radix: 16) else { return nil }
+            bytes.append(byte)
+        }
+        return Data(bytes)
     }
 
     /// Restore point written before anything is changed. The password hash is never included.
@@ -247,10 +294,33 @@ nonisolated struct HomeState: Sendable, Equatable {
     var groupID: Int?
     /// The ACL is exactly the stock entry, with nothing else (such as an old domain ACL).
     var hasStockACL: Bool
+    /// The mode of `~/.CFUserTextEncoding`, nil when there is none.
+    var textEncodingMode: Int? = nil
+    /// Items whose group no longer resolves. After the unbind that is every AD group.
+    var unresolvedGroupItems = 0
 
-    /// A stock macOS home: `drwxr-xr-x+` with `group:everyone deny delete`, group `staff`.
-    static let freshMode = 0o755
+    /// A stock macOS 27 home: `drwxr-x---+` with `group:everyone deny delete`, group `staff`.
+    static let freshMode = 0o750
     static let freshACL = "group:everyone deny delete"
+    static let publicMode = 0o755
+    /// A fresh account's `~/.CFUserTextEncoding`. A mobile account's is 400.
+    static let freshTextEncodingMode = 0o600
+
+    /// Accounts made on older macOS have a 755 home folder, which is stock as well and left alone.
+    static func isStockMode(_ mode: Int?) -> Bool {
+        mode == freshMode || mode == 0o755
+    }
+
+    var hasStockTextEncodingMode: Bool {
+        textEncodingMode.map { $0 == Self.freshTextEncodingMode } ?? true
+    }
+
+    /// The `find` expression for items to move to staff: every group that no longer resolves, plus
+    /// the old AD primary group (which still resolves while the Mac is bound).
+    static func regroupExpression(originalGroupID: Int?) -> [String] {
+        guard let original = originalGroupID, original != AccountSnapshot.freshPrimaryGroupID else { return ["-nogroup"] }
+        return ["(", "-gid", String(original), "-o", "-nogroup", ")"]
+    }
 
     /// `listing` is `ls -lde <home>`; ACL entries print as " 0: group:everyone deny delete".
     static func isStockACL(listing: String) -> Bool {
@@ -295,6 +365,12 @@ nonisolated enum FreshAccountProfile {
         if let gid = snapshot.primaryGroupID, gid != AccountSnapshot.freshPrimaryGroupID {
             add("PrimaryGroupID is \(gid), a fresh account uses \(AccountSnapshot.freshPrimaryGroupID).")
         }
+        if let shell = snapshot.adAssignedShell {
+            add("UserShell is \(shell) (set by AD), a fresh account uses \(AccountSnapshot.freshShell).")
+        }
+        for name in snapshot.missingWriters {
+            add("The record has no _writers_\(name); on a fresh account the user can change \(name).")
+        }
         if !snapshot.extraPolicyKeys.isEmpty {
             add("Account policy still has AD rules: \(snapshot.extraPolicyKeys.joined(separator: ", ")).")
         }
@@ -303,12 +379,18 @@ nonisolated enum FreshAccountProfile {
             add("The user is listed in the staff group; on a fresh account only root is.")
         }
         if let home, home.exists {
-            if let mode = home.mode, mode != HomeState.freshMode {
+            if let mode = home.mode, !HomeState.isStockMode(mode) {
                 add("Home folder mode is \(String(mode, radix: 8)), a fresh account uses \(String(HomeState.freshMode, radix: 8)).")
             }
             if !home.hasStockACL { add("Home folder ACL isn't just the standard 'everyone deny delete' entry.") }
             if let gid = home.groupID, gid != AccountSnapshot.freshPrimaryGroupID {
                 add("Home folder group is \(gid), a fresh account uses staff (\(AccountSnapshot.freshPrimaryGroupID)).")
+            }
+            if home.unresolvedGroupItems > 0 {
+                add("\(home.unresolvedGroupItems) item(s) in the home folder still have an AD group.")
+            }
+            if let mode = home.textEncodingMode, !home.hasStockTextEncodingMode {
+                add(".CFUserTextEncoding mode is \(String(mode, radix: 8)), a fresh account uses \(String(HomeState.freshTextEncodingMode, radix: 8)).")
             }
         }
         return findings
@@ -337,11 +419,13 @@ nonisolated enum StepAction: Sendable, Equatable {
     case destroyKerberosTickets
     case removeStaffMembership
     case grantAdmin
+    case resetPrimaryGroup
+    case resetShell
+    case addWriterPermissions
+    case restartDirectoryServices
     case fixHomeOwnership
     case fixHomeContentGroups
     case fixHomePermissions
-    case resetPrimaryGroup
-    case restartDirectoryServices
     case verifyAccount
 
     var title: String {
@@ -358,11 +442,13 @@ nonisolated enum StepAction: Sendable, Equatable {
         case .destroyKerberosTickets: "Destroy Kerberos Tickets"
         case .removeStaffMembership: "Remove Explicit Staff Membership"
         case .grantAdmin: "Grant Admin Rights"
+        case .resetPrimaryGroup: "Reset Primary Group to Staff"
+        case .resetShell: "Reset Shell to zsh"
+        case .addWriterPermissions: "Let the User Edit Their Own Settings"
+        case .restartDirectoryServices: "Restart Directory Services"
         case .fixHomeOwnership: "Reset Home Folder Ownership"
         case .fixHomeContentGroups: "Reset Group on Home Contents"
         case .fixHomePermissions: "Reset Home Folder Permissions"
-        case .resetPrimaryGroup: "Reset Primary Group to Staff"
-        case .restartDirectoryServices: "Restart Directory Services"
         case .verifyAccount: "Verify Against a Fresh Local Account"
         }
     }
@@ -414,16 +500,26 @@ nonisolated enum StepPlanner {
 
         let originalGroup = snapshot.primaryGroupID ?? AccountSnapshot.freshPrimaryGroupID
         let groupIsWrong = originalGroup != AccountSnapshot.freshPrimaryGroupID
+        if groupIsWrong { steps.append(.resetPrimaryGroup) }
+        if snapshot.adAssignedShell != nil { steps.append(.resetShell) }
+        if !snapshot.missingWriters.isEmpty { steps.append(.addWriterPermissions) }
+
+        // Record changes are done. Restart first so the AD groups no longer resolve, then fix the files.
+        steps.append(.restartDirectoryServices)
         if let home, home.exists {
             if isMobile || groupIsWrong || home.groupID != AccountSnapshot.freshPrimaryGroupID {
                 steps.append(.fixHomeOwnership)
             }
-            if groupIsWrong { steps.append(.fixHomeContentGroups) }
-            if home.mode != HomeState.freshMode || !home.hasStockACL { steps.append(.fixHomePermissions) }
+            // While bound, AD groups other than the primary one still resolve, so they only show up
+            // after the unbind. Also runs on an account converted earlier.
+            if isMobile || groupIsWrong || home.unresolvedGroupItems > 0 {
+                steps.append(.fixHomeContentGroups)
+            }
+            if !HomeState.isStockMode(home.mode) || !home.hasStockACL || !home.hasStockTextEncodingMode {
+                steps.append(.fixHomePermissions)
+            }
         }
-        if groupIsWrong { steps.append(.resetPrimaryGroup) }
-
-        steps += [.restartDirectoryServices, .verifyAccount]
+        steps.append(.verifyAccount)
         return steps
     }
 }

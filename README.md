@@ -8,7 +8,7 @@
 *   **Attribute Cleanup:** Removes AD-specific attributes (e.g., `CachedGroups`, `OriginalNodeName`, `SMBSID`) to prevent "zombie" AD behavior. Only attributes that are present are touched.
 *   **Surgical Auth Fix:** Removes the Active Directory `Kerberosv5` and `LocalCachedUser` entries from `AuthenticationAuthority`. The local `ShadowHash` (password), `SecureToken` (FileVault unlock) and the local `Kerberosv5 ... @LKDC` entry are never removed, so the local password and the FileVault login keep working.
 *   **Value-Level Cleanup:** Removes only AD values from `AltSecurityIdentities` and `RecordName` (`user@DOMAIN` aliases); an Apple Account's values are kept.
-*   **Fresh-Account Layout:** Resets the home folder to a stock macOS layout (mode 755, only the `everyone deny delete` ACL, group `staff`), moves files that carry the old AD primary group to `staff`, and sets `PrimaryGroupID` to 20.
+*   **Fresh-Account Layout:** Resets the home folder to a stock macOS layout (mode 750 on macOS 27, 755 on older; only the `everyone deny delete` ACL, group `staff`), moves files that carry the old AD group to `staff` (every group that no longer resolves after the unbind), sets `.CFUserTextEncoding` to 600, and sets `PrimaryGroupID` to 20.
 *   **Policy Reset:** Clears restrictive AD password policies (e.g., expiration dates).
 *   **Search Path Cleanup:** Removes Active Directory from the system's CSP search paths and sets the search policy back to Automatic.
 *   **Backup and Verification:** Saves the account record (without the password hash) before any change, and finishes by comparing the account against a fresh local account.
@@ -32,7 +32,7 @@
 
 | Flag | Effect |
 | :--- | :--- |
-| `--verify` | Read-only. Lists what differs from a fresh local account and changes nothing. Doesn't need administrator rights. |
+| `--verify` | Read-only. Lists what differs from a fresh local account and changes nothing. Needs root to read another user's authentication data and home folder. |
 | `--no-autostart` | Analyzes and shows the plan, then waits for **Start Migration**. |
 
 **Files written** (root-only, `0600`): `/private/var/log/ad_to_local_migration.log` and `/private/var/log/ad_to_local_backup_<user>_<timestamp>.plist` (the account record before the change).
@@ -88,9 +88,10 @@ If this key is set, the app will migrate the specified user instead of the user 
 3.  **Unbind:** Runs `dsconfigad -remove -force` and verifies it.
 4.  **Auth Authority Fix:** Removes only the AD entries. Aborts if the `SecureToken` or FileVault crypto-user entry disappears.
 5.  **Attribute Removal:** Deletes the AD attributes that are present, using `dscl`.
-6.  **Home Directory:** Detects the *real* home directory path (handling non-standard locations) and resets it to a stock layout.
-7.  **Cleanup:** Destroys the user's Kerberos tickets (`kdestroy`, run in the user's session) and restarts Directory Services (`killall opendirectoryd`).
-8.  **Verification:** Compares the result with a fresh local account and reports any difference as a warning.
+6.  **Shell and Writers:** Resets the shell to `/bin/zsh` only if it is still the one AD assigned. Adds the `_writers_` permissions a fresh account has for `AvatarRepresentation`, `inputSources` and `unlockOptions`.
+7.  **Restart** Directory Services, so the AD groups no longer resolve.
+8.  **Home Directory:** Detects the *real* home directory path (handling non-standard locations) and resets it to a stock layout: owner and group `staff`, every item with an AD group moved to `staff`, mode 750 (or 755 on older macOS), only the `everyone deny delete` ACL, and `.CFUserTextEncoding` mode 600.
+9.  **Verification:** Compares the result with a fresh local account and reports any difference as a warning.
 
 ## Development
 
