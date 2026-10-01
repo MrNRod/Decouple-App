@@ -126,7 +126,8 @@ nonisolated enum ADAttributes {
         "Company",
         "Department",
         "EMailAddress",
-        "AppleMetaRecordName"
+        "AppleMetaRecordName",
+        "OriginalNFSHomeDirectory"
     ]
 
     private static let lookup = Set(names.map(normalized))
