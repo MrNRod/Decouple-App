@@ -39,6 +39,8 @@
 
 **UID:** the account keeps its UID. Mobile accounts often have a large AD-mapped UID, while a fresh local account gets 501 or higher. Keeping it means no file ownership changes.
 
+**Known limitation — Local KDC:** A fresh local account has a `Kerberosv5` entry for the Local KDC (LKDC), plus `KerberosKeys` and `HeimdalSRPKey`. A converted mobile account doesn't, because these are created by the LKDC when the password is set, and the mobile account's password was set by AD. The account works without them (login, FileVault, keychain all use the preserved `ShadowHash` and `SecureToken`). To add Kerberos single sign-on for local services, the user changes their password once in System Settings after the migration.
+
 ### MDM / Automated Deployment
 You can deploy this tool via any MDM (Workspace ONE,Jamf, Kandji, Mosyle, etc.).
 
