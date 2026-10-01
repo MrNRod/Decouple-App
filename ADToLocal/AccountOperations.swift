@@ -59,10 +59,22 @@ nonisolated enum AccountOperations {
         let mode = stat.first.flatMap { Int($0, radix: 8) }
         let group = stat.dropFirst().first.flatMap { Int($0) }
         let listing = CommandRunner.run(Tool.ls, ["-lde", path]).output
+        let encoding = path + "/.CFUserTextEncoding"
+        let encodingMode = FileManager.default.fileExists(atPath: encoding)
+            ? Int(CommandRunner.run(Tool.stat, ["-f", "%Lp", encoding]).output, radix: 8)
+            : nil
         return HomeState(
             exists: true, mode: mode, groupID: group,
-            hasStockACL: HomeState.isStockACL(listing: listing)
+            hasStockACL: HomeState.isStockACL(listing: listing),
+            textEncodingMode: encodingMode,
+            unresolvedGroupItems: countItems(in: path, matching: ["-nogroup"])
         )
+    }
+
+    /// Items `find` matches. Unreadable (TCC) paths are skipped, so the exit status is ignored.
+    private static func countItems(in path: String, matching expression: [String]) -> Int {
+        let result = CommandRunner.run(Tool.find, [path, "-xdev"] + expression + ["-print"])
+        return result.output.split(separator: "\n").filter { !$0.hasPrefix("find: ") }.count
     }
 
     private static func groupValues(_ group: String, _ attribute: String) -> [String] {
@@ -95,6 +107,7 @@ nonisolated enum AccountOperations {
             homeDirectory: homePath,
             originalPrimaryGroupID: snapshot.primaryGroupID,
             generatedUID: snapshot.generatedUID,
+            adAssignedShell: snapshot.adAssignedShell,
             hadSecureToken: snapshot.hasSecureToken,
             fileVaultEnabled: fileVault,
             cryptoUsersBefore: fileVault ? cryptoUsers() : []
@@ -132,11 +145,13 @@ nonisolated enum AccountOperations {
         case .destroyKerberosTickets: outcome = destroyKerberosTickets(context)
         case .removeStaffMembership: outcome = removeStaffMembership(context)
         case .grantAdmin: outcome = grantAdmin(context)
+        case .resetPrimaryGroup: outcome = resetPrimaryGroup(context)
+        case .resetShell: outcome = resetShell(context)
+        case .addWriterPermissions: outcome = addWriterPermissions(context)
+        case .restartDirectoryServices: outcome = restartDirectoryServices()
         case .fixHomeOwnership: outcome = fixHomeOwnership(context)
         case .fixHomeContentGroups: outcome = fixHomeContentGroups(context)
         case .fixHomePermissions: outcome = fixHomePermissions(context)
-        case .resetPrimaryGroup: outcome = resetPrimaryGroup(context)
-        case .restartDirectoryServices: outcome = restartDirectoryServices()
         case .verifyAccount: outcome = verifyAccount(context)
         }
         AppLog.write("Result: \(outcome)")
@@ -262,11 +277,17 @@ nonisolated enum AccountOperations {
         return failed == 0 ? .success("Removed \(values.count)") : .warning("Could not remove \(failed) of \(values.count)")
     }
 
+    /// pwpolicy removes the rules. Keys it leaves (the history and last-login keys a mobile account
+    /// carries) are removed by writing the policy back without them, as XML like a fresh account.
     private static func clearAccountPolicies(_ context: MigrationContext) -> StepOutcome {
         let result = CommandRunner.run(Tool.pwpolicy, ["-n", "/Local/Default", "-u", context.user, "-clearaccountpolicies"])
-        guard result.succeeded else { return .warning(result.output) }
+        if let xml = readSnapshot(user: context.user)?.freshPolicyXML {
+            let write = CommandRunner.run(Tool.dscl, [".", "-create", "/Users/\(context.user)", "dsAttrTypeNative:accountPolicyData", xml])
+            if !write.succeeded { AppLog.write("Could not write the account policy: \(write.output)") }
+        }
         let remaining = readSnapshot(user: context.user)?.extraPolicyKeys ?? []
-        return remaining.isEmpty ? .success("Cleared") : .warning("Policy keys remain: \(remaining.joined(separator: ", "))")
+        guard remaining.isEmpty else { return .warning("Policy keys remain: \(remaining.joined(separator: ", ")). \(result.output)") }
+        return .success("Cleared")
     }
 
     /// Runs in the user's session; as root, plain `kdestroy` only clears root's tickets.
@@ -306,19 +327,22 @@ nonisolated enum AccountOperations {
         return protectedFilesOutcome(result, success: "Owner \(context.user), group staff")
     }
 
-    /// Files created while the account was an AD user carry the AD primary group. Only those are
-    /// touched; the UID is unchanged so user ownership is already correct.
+    /// Files created while the account was an AD user carry the AD primary group, and some carry
+    /// other AD groups. Only those are touched; the UID is unchanged so user ownership is already
+    /// correct. Runs after the Directory Services restart, so AD groups no longer resolve.
     private static func fixHomeContentGroups(_ context: MigrationContext) -> StepOutcome {
-        let fresh = AccountSnapshot.freshPrimaryGroupID
-        guard let original = context.originalPrimaryGroupID, original != fresh else { return .success("Not needed") }
+        let expression = HomeState.regroupExpression(originalGroupID: context.originalPrimaryGroupID)
+        let count = countItems(in: context.homeDirectory, matching: expression)
+        guard count > 0 else { return .success("Not needed") }
         guard HomeDirectoryValidator.isSafe(context.homeDirectory, forUser: context.user) else {
             return .warning("Skipped: '\(context.homeDirectory)' is not a home folder named for the user.")
         }
         let result = CommandRunner.runWithRetry(
             Tool.find,
-            [context.homeDirectory, "-xdev", "-gid", String(original), "-exec", Tool.chgrp, "-h", String(fresh), "{}", "+"]
+            [context.homeDirectory, "-xdev"] + expression
+                + ["-exec", Tool.chgrp, "-h", String(AccountSnapshot.freshPrimaryGroupID), "{}", "+"]
         )
-        return protectedFilesOutcome(result, success: "Group \(original) changed to staff")
+        return protectedFilesOutcome(result, success: "Moved \(count) item(s) from an AD group to staff")
     }
 
     private static func fixHomePermissions(_ context: MigrationContext) -> StepOutcome {
@@ -327,10 +351,10 @@ nonisolated enum AccountOperations {
         }
         let home = homeState(context.homeDirectory)
         var notes: [String] = []
-        if home.mode != HomeState.freshMode {
+        if !HomeState.isStockMode(home.mode) {
             let result = CommandRunner.runWithRetry(Tool.chmod, [String(HomeState.freshMode, radix: 8), context.homeDirectory])
             if !result.succeeded { return protectedFilesOutcome(result, success: "") }
-            notes.append("mode 755")
+            notes.append("mode \(String(HomeState.freshMode, radix: 8))")
         }
         if !home.hasStockACL {
             // Remove every ACL first (stale domain entries), then add the stock one.
@@ -340,18 +364,57 @@ nonisolated enum AccountOperations {
             if !add.succeeded { return protectedFilesOutcome(add, success: "") }
             notes.append("ACL")
         }
+        let encoding = context.homeDirectory + "/.CFUserTextEncoding"
+        if !home.hasStockTextEncodingMode, !isSymbolicLink(encoding) {
+            let mode = String(HomeState.freshTextEncodingMode, radix: 8)
+            let result = CommandRunner.runWithRetry(Tool.chmod, [mode, encoding])
+            if !result.succeeded { return protectedFilesOutcome(result, success: "") }
+            notes.append(".CFUserTextEncoding \(mode)")
+        }
         let publicFolder = context.homeDirectory + "/Public"
-        if homeState(publicFolder).exists, homeState(publicFolder).mode != HomeState.freshMode {
-            _ = CommandRunner.runWithRetry(Tool.chmod, [String(HomeState.freshMode, radix: 8), publicFolder])
-            notes.append("Public 755")
+        if let mode = modeOf(publicFolder), mode != HomeState.publicMode {
+            _ = CommandRunner.runWithRetry(Tool.chmod, [String(HomeState.publicMode, radix: 8), publicFolder])
+            notes.append("Public \(String(HomeState.publicMode, radix: 8))")
         }
         return .success(notes.isEmpty ? "Already correct" : "Set " + notes.joined(separator: ", "))
+    }
+
+    private static func modeOf(_ path: String) -> Int? {
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        return Int(CommandRunner.run(Tool.stat, ["-f", "%Lp", path]).output, radix: 8)
+    }
+
+    private static func isSymbolicLink(_ path: String) -> Bool {
+        (try? FileManager.default.attributesOfItem(atPath: path)[.type] as? FileAttributeType) == .typeSymbolicLink
     }
 
     private static func resetPrimaryGroup(_ context: MigrationContext) -> StepOutcome {
         let fresh = String(AccountSnapshot.freshPrimaryGroupID)
         let result = CommandRunner.run(Tool.dscl, [".", "-create", "/Users/\(context.user)", "PrimaryGroupID", fresh])
         return result.succeeded ? .success("PrimaryGroupID \(fresh) (staff)") : .warning(result.output)
+    }
+
+    /// Only a shell AD assigned is reset; one the user picked is kept. Uses the value captured before
+    /// the AD attributes (with `original_shell`) were removed.
+    private static func resetShell(_ context: MigrationContext) -> StepOutcome {
+        guard let adShell = context.adAssignedShell else { return .success("Not needed") }
+        guard readSnapshot(user: context.user)?.values("UserShell").first == adShell else { return .success("Already changed") }
+        let result = CommandRunner.run(Tool.dscl, [".", "-create", "/Users/\(context.user)", "UserShell", AccountSnapshot.freshShell])
+        return result.succeeded ? .success("\(adShell) (set by AD) changed to \(AccountSnapshot.freshShell)") : .warning(result.output)
+    }
+
+    /// Lets the user change their own picture, input sources and unlock options. Adds no data.
+    private static func addWriterPermissions(_ context: MigrationContext) -> StepOutcome {
+        guard let missing = readSnapshot(user: context.user)?.missingWriters else { return .warning("Could not read the account record.") }
+        guard !missing.isEmpty else { return .success("Already present") }
+        var failed: [String] = []
+        for name in missing {
+            let result = CommandRunner.run(Tool.dscl, [".", "-create", "/Users/\(context.user)", "dsAttrTypeNative:_writers_\(name)", context.user])
+            if !result.succeeded { failed.append(name) }
+        }
+        return failed.isEmpty
+            ? .success("Added \(missing.joined(separator: ", "))")
+            : .warning("Could not add: \(failed.joined(separator: ", "))")
     }
 
     private static func restartDirectoryServices() -> StepOutcome {

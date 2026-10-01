@@ -40,6 +40,8 @@ nonisolated struct MigrationContext: Sendable {
     let homeDirectory: String
     let originalPrimaryGroupID: Int?
     let generatedUID: String?
+    /// Read before `original_shell` is removed with the other AD attributes.
+    let adAssignedShell: String?
     let hadSecureToken: Bool
     let fileVaultEnabled: Bool
     let cryptoUsersBefore: Set<String>

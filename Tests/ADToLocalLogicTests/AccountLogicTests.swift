@@ -24,11 +24,15 @@ private let freshLocal: [String: [String]] = [
     "dsAttrTypeStandard:PrimaryGroupID": ["20"],
     "dsAttrTypeStandard:GeneratedUID": ["9CBD8180-82AE-414C-8D00-2401A5B92916"],
     "dsAttrTypeStandard:NFSHomeDirectory": ["/Users/jdoe"],
+    "dsAttrTypeStandard:UserShell": ["/bin/zsh"],
     "dsAttrTypeStandard:AuthenticationAuthority": [shadow, lkdc, secureToken],
-    "dsAttrTypeStandard:AltSecurityIdentities": ["X509:<T>CN=Apple Root CA<S>CN=com.apple.idms.appleid.prd.1"]
+    "dsAttrTypeStandard:AltSecurityIdentities": ["X509:<T>CN=Apple Root CA<S>CN=com.apple.idms.appleid.prd.1"],
+    "dsAttrTypeNative:_writers_AvatarRepresentation": ["jdoe"],
+    "dsAttrTypeNative:_writers_inputSources": ["jdoe"],
+    "dsAttrTypeNative:_writers_unlockOptions": ["jdoe"]
 ]
 
-private let cleanHome = HomeState(exists: true, mode: 0o755, groupID: 20, hasStockACL: true)
+private let cleanHome = HomeState(exists: true, mode: 0o750, groupID: 20, hasStockACL: true)
 
 private func findings(
     _ snapshot: AccountSnapshot,
@@ -121,6 +125,7 @@ private func findings(
             "dsAttrTypeStandard:RecordName",
             "dsAttrTypeStandard:CachedGroups",
             "dsAttrTypeStandard:SMBSID",
+            "dsAttrTypeStandard:AppleMetaRecordName",
             "dsAttrTypeNative:cached_groups",
             "dsAttrTypeNative:accountPolicyData",
             "dsAttrTypeStandard:AltSecurityIdentities",
@@ -128,6 +133,7 @@ private func findings(
         ]
         #expect(ADAttributes.keysToRemove(from: keys) == [
             "dsAttrTypeNative:cached_groups",
+            "dsAttrTypeStandard:AppleMetaRecordName",
             "dsAttrTypeStandard:CachedGroups",
             "dsAttrTypeStandard:FirstName",
             "dsAttrTypeStandard:SMBSID"
@@ -136,7 +142,8 @@ private func findings(
 
     @Test func neverListsAttributesAFreshAccountOwns() {
         let protected = ["AuthenticationAuthority", "GeneratedUID", "Password", "AltSecurityIdentities",
-                         "accountPolicyData", "UniqueID", "PrimaryGroupID", "RealName", "RecordName"]
+                         "accountPolicyData", "UniqueID", "PrimaryGroupID", "RealName", "RecordName",
+                         "UserShell", "AppleMetaNodeLocation"]
         let names = Set(ADAttributes.names.map(ADAttributes.normalized))
         for name in protected {
             #expect(!names.contains(ADAttributes.normalized(name)), "\(name) must not be deleted")
@@ -222,7 +229,8 @@ private func findings(
 @Suite struct HomeAndGroupTests {
     @Test func flagsWrongHomeModeAclAndGroup() throws {
         let account = try snapshot(freshLocal)
-        let bad = HomeState(exists: true, mode: 0o750, groupID: 12345, hasStockACL: false)
+        // 750 is now the stock mode; use 700 to actually be wrong.
+        let bad = HomeState(exists: true, mode: 0o700, groupID: 12345, hasStockACL: false)
         #expect(findings(account, home: bad).count == 3)
     }
 
@@ -283,12 +291,14 @@ private func findings(
         mobile["dsAttrTypeStandard:AuthenticationAuthority"] = [shadow, adKerberos, lkdc, cachedUser, secureToken]
         mobile["dsAttrTypeStandard:PrimaryGroupID"] = ["12"]
         mobile["dsAttrTypeStandard:SMBSID"] = ["S-1-5-21"]
-        let bad = HomeState(exists: true, mode: 0o750, groupID: 12, hasStockACL: true)
+        let bad = HomeState(exists: true, mode: 0o700, groupID: 12, hasStockACL: false)
         #expect(try plan(mobile, bound: true, home: bad) == [
             .verifyUserExists, .backupAccount, .unbindMachine, .cleanSearchPaths,
             .fixAuthenticationAuthority, .removeADAttributes, .destroyKerberosTickets,
-            .fixHomeOwnership, .fixHomeContentGroups, .fixHomePermissions, .resetPrimaryGroup,
-            .restartDirectoryServices, .verifyAccount
+            .resetPrimaryGroup,
+            .restartDirectoryServices,
+            .fixHomeOwnership, .fixHomeContentGroups, .fixHomePermissions,
+            .verifyAccount
         ])
     }
 
@@ -343,7 +353,7 @@ private func findings(
         #expect(findings(account, home: staleHome).count == 1)
         let steps = StepPlanner.plan(snapshot: account, machineBound: false, home: staleHome, adminNestedGroups: [],
                                      staffMembers: ["root"], userName: "jdoe")
-        #expect(steps == [.verifyUserExists, .backupAccount, .fixHomePermissions, .restartDirectoryServices, .verifyAccount])
+        #expect(steps == [.verifyUserExists, .backupAccount, .restartDirectoryServices, .fixHomePermissions, .verifyAccount])
     }
 
     private func mobilePlan(grantAdmin: Bool, admins: [String] = []) throws -> [StepAction] {
@@ -389,5 +399,128 @@ private func findings(
         #expect(steps == [.verifyUserExists, .backupAccount, .cleanSearchPaths, .restartDirectoryServices, .verifyAccount])
         // Not bound and nothing in the path: nothing to do.
         #expect(findings(account, searchPaths: ["/Local/Default"]).isEmpty)
+    }
+}
+
+// MARK: - Shell, writers and binary policy (ported from the live test)
+
+@Suite struct ShellAndWriterTests {
+    @Test func adAssignedShellDetected() throws {
+        var mobile = freshLocal
+        mobile["dsAttrTypeStandard:UserShell"] = ["/bin/bash"]
+        mobile["dsAttrTypeNative:original_shell"] = ["/bin/bash"]
+        let account = try snapshot(mobile)
+        #expect(account.adAssignedShell == "/bin/bash")
+        #expect(findings(account).contains { $0.message.contains("UserShell") })
+        #expect(try plan(mobile).contains(.resetShell))
+    }
+
+    @Test func shellTheUserPickedIsKept() throws {
+        var mobile = freshLocal
+        mobile["dsAttrTypeStandard:UserShell"] = ["/opt/homebrew/bin/fish"]
+        mobile["dsAttrTypeNative:original_shell"] = ["/bin/bash"]
+        #expect(try snapshot(mobile).adAssignedShell == nil)
+    }
+
+    @Test func missingWritersAreFlaggedAndAdded() throws {
+        var mobile = freshLocal
+        mobile.removeValue(forKey: "dsAttrTypeNative:_writers_AvatarRepresentation")
+        mobile.removeValue(forKey: "dsAttrTypeNative:_writers_inputSources")
+        let account = try snapshot(mobile)
+        #expect(account.missingWriters == ["AvatarRepresentation", "inputSources"])
+        #expect(findings(account).contains { $0.message.contains("_writers_AvatarRepresentation") })
+        #expect(try plan(mobile).contains(.addWriterPermissions))
+    }
+
+    private func plan(_ dictionary: [String: [String]], bound: Bool = false, home: HomeState? = cleanHome,
+                      staff: [String] = ["root"]) throws -> [StepAction] {
+        StepPlanner.plan(snapshot: try snapshot(dictionary), machineBound: bound, home: home,
+                        adminNestedGroups: [], staffMembers: staff, userName: "jdoe")
+    }
+}
+
+// MARK: - Binary policy and fresh policy XML
+
+@Suite struct BinaryPolicyTests {
+    @Test func binaryPlistPolicyIsParsed() throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plist version="1.0"><dict>
+        <key>creationTime</key><real>1.0</real>
+        <key>maxMinutesUntilChangePassword</key><integer>129600</integer>
+        </dict></plist>
+        """
+        let binary = try PropertyListSerialization.data(fromPropertyList: 
+            try PropertyListSerialization.propertyList(from: Data(xml.utf8), format: nil) as Any,
+            format: .binary, options: 0)
+        // dscl prints binary data as hex text in groups of 8 hex digits (the last can be shorter).
+        let hexChars = binary.map { String(format: "%02x", $0) }.joined()
+        var hex = ""
+        for (i, ch) in hexChars.enumerated() {
+            if i > 0 && i % 8 == 0 { hex += " " }
+            hex.append(ch)
+        }
+        var record = freshLocal
+        record["dsAttrTypeNative:accountPolicyData"] = [hex]
+        let account = try snapshot(record)
+        #expect(account.extraPolicyKeys == ["maxMinutesUntilChangePassword"])
+        #expect(account.freshPolicyXML?.contains("creationTime") == true)
+        #expect(account.freshPolicyXML?.contains("maxMinutesUntilChangePassword") == false)
+    }
+
+    @Test func hexDataDecodesGroupsOfEight() {
+        let hex = "62706c69 73743030"
+        let data = AccountSnapshot.hexData(hex)
+        #expect(data != nil)
+        #expect(data?.prefix(6) == Data("bplist".utf8))
+        #expect(AccountSnapshot.hexData("not hex") == nil)
+        #expect(AccountSnapshot.hexData("62706c") == nil)  // odd number of digits
+    }
+}
+
+// MARK: - Home: .CFUserTextEncoding and -nogroup
+
+@Suite struct HomeDetailTests {
+    @Test func cfUserTextEncodingModeIsFlagged() throws {
+        let account = try snapshot(freshLocal)
+        let home = HomeState(exists: true, mode: 0o750, groupID: 20, hasStockACL: true, textEncodingMode: 0o400)
+        #expect(findings(account, home: home).contains { $0.message.contains("CFUserTextEncoding") })
+        #expect(StepPlanner.plan(snapshot: account, machineBound: false, home: home, adminNestedGroups: [],
+                                staffMembers: ["root"], userName: "jdoe").contains(.fixHomePermissions))
+    }
+
+    @Test func unresolvedGroupItemsAreFlagged() throws {
+        let account = try snapshot(freshLocal)
+        let home = HomeState(exists: true, mode: 0o750, groupID: 20, hasStockACL: true, unresolvedGroupItems: 5)
+        #expect(findings(account, home: home).contains { $0.message.contains("AD group") })
+        let steps = StepPlanner.plan(snapshot: account, machineBound: false, home: home, adminNestedGroups: [],
+                                    staffMembers: ["root"], userName: "jdoe")
+        #expect(steps.contains(.fixHomeContentGroups))
+    }
+
+    @Test func regroupExpressionMatchesOldGroupAndNogroup() {
+        #expect(HomeState.regroupExpression(originalGroupID: 12) == ["(", "-gid", "12", "-o", "-nogroup", ")"])
+        #expect(HomeState.regroupExpression(originalGroupID: 20) == ["-nogroup"])
+        #expect(HomeState.regroupExpression(originalGroupID: nil) == ["-nogroup"])
+    }
+
+    @Test func stockModeAccepts750And755() {
+        #expect(HomeState.isStockMode(0o750))
+        #expect(HomeState.isStockMode(0o755))
+        #expect(!HomeState.isStockMode(0o700))
+        #expect(!HomeState.isStockMode(0o775))
+    }
+}
+
+// MARK: - AppleMetaRecordName
+
+@Suite struct AppleMetaRecordNameTests {
+    @Test func detectedAsADAttribute() throws {
+        var mobile = freshLocal
+        mobile["dsAttrTypeStandard:AppleMetaRecordName"] = ["CN=Test User,CN=Users,DC=corp,DC=example,DC=com"]
+        let account = try snapshot(mobile)
+        #expect(account.adAttributeKeys.contains("dsAttrTypeStandard:AppleMetaRecordName"))
+        #expect(findings(account).contains { $0.message.contains("AppleMetaRecordName") })
+        #expect(try snapshot(freshLocal).adAttributeKeys.isEmpty)
     }
 }

@@ -39,10 +39,9 @@ struct ADToLocalApp: App {
 
     init() {
         NSApplication.shared.activate()
-        // Verification only reads, so it doesn't need an administrator prompt.
-        if !CommandLine.arguments.contains("--verify") {
-            relaunchAsRoot()
-        }
+        // Also for --verify: the authentication data and other users' home folders are root-only,
+        // so a check without root would miss differences.
+        relaunchAsRoot()
     }
 
     var body: some Scene {
