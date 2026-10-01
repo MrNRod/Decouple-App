@@ -25,6 +25,7 @@ nonisolated enum AccountOperations {
         static let diskutil = "/usr/sbin/diskutil"
         static let ls = "/bin/ls"
         static let stat = "/usr/bin/stat"
+        static let dscacheutil = "/usr/bin/dscacheutil"
     }
 
     // MARK: - Reading
@@ -420,6 +421,8 @@ nonisolated enum AccountOperations {
     private static func restartDirectoryServices() -> StepOutcome {
         // Fails when it isn't running, which is fine: launchd restarts it either way.
         _ = CommandRunner.run(Tool.killall, ["opendirectoryd"])
+        // Flush the DS cache so `id` shows the new groups immediately, not the cached AD ones.
+        _ = CommandRunner.run(Tool.dscacheutil, ["-flushcache"])
         Thread.sleep(forTimeInterval: 2)
         return .success("Restarted")
     }
