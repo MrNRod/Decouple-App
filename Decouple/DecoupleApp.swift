@@ -1,6 +1,6 @@
 //
-//  ADToLocalApp.swift
-//  ADToLocal
+//  DecoupleApp.swift
+//  Decouple
 //
 //  Created by Noel Rodriguez-Lebron on 12/1/25.
 //
@@ -34,7 +34,7 @@ func relaunchAsRoot(arguments: [String] = CommandLine.arguments) {
 }
 
 @main
-struct ADToLocalApp: App {
+struct DecoupleApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {

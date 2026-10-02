@@ -1,9 +1,9 @@
 //
 //  CommandRunner.swift
-//  ADToLocal
+//  Decouple
 //
 //  Runs system tools with an argument array (never through a shell) and logs to
-//  the unified log and to /private/var/log/ad_to_local_migration.log.
+//  the unified log and to /private/var/log/decouple.log.
 //
 
 import Foundation
@@ -63,9 +63,9 @@ nonisolated enum CommandRunner {
 }
 
 nonisolated enum AppLog {
-    static let path = "/private/var/log/ad_to_local_migration.log"
+    static let path = "/private/var/log/decouple.log"
 
-    private static let logger = Logger(subsystem: "com.mrnrod45.ADToLocal", category: "migration")
+    private static let logger = Logger(subsystem: "com.mrnrod45.Decouple", category: "migration")
     private static let lock = NSLock()
 
     static func write(_ message: String) {
