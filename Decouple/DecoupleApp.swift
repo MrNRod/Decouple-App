@@ -31,5 +31,6 @@ struct DecoupleApp: App {
             }
         }
         .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }

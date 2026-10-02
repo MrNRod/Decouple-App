@@ -27,30 +27,11 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Layout
+
     private var mainContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Target user:")
-                    .foregroundStyle(.secondary)
-                Text(viewModel.user)
-                    .fontWeight(.medium)
-                    .textSelection(.enabled)
-                Spacer()
-                if viewModel.mode == .verifyOnly {
-                    Text("Verification only")
-                        .font(.subheadline)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(.quaternary.opacity(0.6), in: Capsule())
-                } else if viewModel.usesDialog {
-                    Text("swiftDialog UI")
-                        .font(.subheadline)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(.quaternary.opacity(0.6), in: Capsule())
-                }
-            }
-            .font(.subheadline)
+            header
 
             if !viewModel.steps.isEmpty {
                 ProgressView(value: viewModel.progress)
@@ -59,23 +40,10 @@ struct ContentView: View {
 
             Divider()
             content
+            logArea
+
             Divider()
-
-            if showLog {
-                ScrollView {
-                    Text(viewModel.log)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(6)
-                }
-                .frame(height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-            }
-
             footer
-                .padding(.bottom)
         }
         .padding()
         .decoupleWindowFrame()
@@ -88,6 +56,53 @@ struct ContentView: View {
         }
     }
 
+    /// Form-style header: a small caption above the account name, mode chip trailing.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Target user")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if viewModel.mode == .verifyOnly {
+                    modeChip("Verify only")
+                } else if viewModel.usesDialog {
+                    modeChip("swiftDialog")
+                }
+            }
+            Text(viewModel.user)
+                .font(.title3.weight(.semibold))
+                .textSelection(.enabled)
+        }
+    }
+
+    private func modeChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(.quaternary.opacity(0.6), in: Capsule())
+    }
+
+    private var logArea: some View {
+        Group {
+            if showLog {
+                ScrollView(showsIndicators: true) {
+                    Text(viewModel.log)
+                        .font(.system(.caption2, design: .monospaced))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(height: 170)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
+                .padding(.top, 4)
+            }
+        }
+    }
+
     // MARK: - Content
 
     @ViewBuilder
@@ -95,6 +110,7 @@ struct ContentView: View {
         switch viewModel.phase {
         case .analyzing:
             ProgressView("Analyzing account…")
+                .controlSize(.large)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .clean:
             StatusBanner(
@@ -106,13 +122,13 @@ struct ContentView: View {
         case .ready, .running:
             StepListView(steps: viewModel.steps)
         case .completed(let hasWarnings):
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 StatusBanner(
                     systemImage: hasWarnings ? "exclamationmark.triangle.fill" : "checkmark.shield.fill",
                     tint: hasWarnings ? .orange : .green,
                     title: hasWarnings ? "Completed With Warnings" : "Migration Successful",
                     message: hasWarnings
-                        ? "Review the highlighted steps below."
+                        ? "Review the steps marked with a warning below."
                         : "\(viewModel.user) is now a local account.\nRestart to confirm the login still works."
                 )
                 StepListView(steps: viewModel.steps)
@@ -120,21 +136,26 @@ struct ContentView: View {
         case .verified:
             VerificationResultView(findings: viewModel.findings)
         case .failed(let message):
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 StatusBanner(systemImage: "xmark.octagon.fill", tint: .red, title: "Migration Failed", message: message)
                 if !viewModel.steps.isEmpty { StepListView(steps: viewModel.steps) }
             }
         }
     }
 
+    // MARK: - Footer
+
     private var footer: some View {
-        HStack {
-            Button { withAnimation { showLog.toggle() } } label: {
+        HStack(spacing: 12) {
+            Button {
+                withAnimation { showLog.toggle() }
+            } label: {
                 Label(showLog ? "Hide Log" : "Show Log", systemImage: "text.justify.leading")
             }
             .help("Toggle the migration log")
 
             Spacer()
+
             switch viewModel.phase {
             case .analyzing:
                 EmptyView()
@@ -143,8 +164,11 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             case .running:
-                ProgressView().controlSize(.small)
-                Text("Migrating…").font(.caption).foregroundStyle(.secondary)
+                ProgressView()
+                    .controlSize(.small)
+                Text("Migrating…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             case .completed:
                 Button("Restart Now") { confirmRestart = true }
                 closeButton
@@ -160,20 +184,20 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Subviews
+// MARK: - Step List
 
 struct StepListView: View {
     let steps: [MigrationStep]
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
+            ScrollView(showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(steps) { step in
                         StepRow(step: step).id(step.id)
                     }
                 }
-                .padding()
+                .padding(.vertical, 2)
             }
             .onChange(of: steps.first { $0.status == .running }?.id) { _, id in
                 if let id { withAnimation { proxy.scrollTo(id, anchor: .center) } }
@@ -186,19 +210,22 @@ struct StepRow: View {
     let step: MigrationStep
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
             StatusIndicator(status: step.status)
             VStack(alignment: .leading, spacing: 2) {
-                Text(step.name).font(.callout)
+                Text(step.name)
+                    .font(.callout)
                 if step.status == .warning || step.status == .failure, !step.outputLog.isEmpty {
                     Text(step.outputLog)
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 1)
         .accessibilityElement(children: .combine)
     }
 }
@@ -210,15 +237,20 @@ struct StatusIndicator: View {
         Group {
             switch status {
             case .pending:
-                Image(systemName: "circle").foregroundStyle(.secondary)
+                Image(systemName: "circle")
+                    .foregroundStyle(.tertiary)
             case .running:
-                ProgressView().controlSize(.small)
+                ProgressView()
+                    .controlSize(.small)
             case .success:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
             case .warning:
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
             case .failure:
-                Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+                Image(systemName: "xmark.octagon.fill")
+                    .foregroundStyle(.red)
             }
         }
         .frame(width: 18, height: 18)
@@ -243,18 +275,20 @@ struct StatusBanner: View {
     let message: String
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 36))
+                .font(.system(size: 30))
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
-            Text(title).font(.headline)
+            Text(title)
+                .font(.headline)
             Text(message)
-                .font(.callout)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
@@ -272,22 +306,23 @@ struct VerificationResultView: View {
             )
             .frame(maxHeight: .infinity)
         } else {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 StatusBanner(
                     systemImage: "exclamationmark.triangle.fill", tint: .orange,
                     title: "\(findings.count) Difference\(findings.count == 1 ? "" : "s") Found",
                     message: "Nothing was changed."
                 )
-                ScrollView {
+                ScrollView(showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(findings, id: \.message) { finding in
                             Label(finding.message, systemImage: "exclamationmark.triangle.fill")
                                 .font(.callout)
                                 .symbolRenderingMode(.multicolor)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .padding()
+                    .padding(.vertical, 2)
                 }
             }
         }

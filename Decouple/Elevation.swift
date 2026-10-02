@@ -101,9 +101,10 @@ final class ElevationManager {
 extension View {
     /// One shared window box for every app state (elevation, prompt, content), so the
     /// window is created at the ideal size and resizing stays in this range.
+    /// Portrait proportions, like a standard macOS utility panel.
     func decoupleWindowFrame() -> some View {
-        frame(minWidth: 480, idealWidth: 520, maxWidth: 680,
-              minHeight: 500, idealHeight: 560, maxHeight: 720)
+        frame(minWidth: 460, idealWidth: 480, maxWidth: 520,
+              minHeight: 600, idealHeight: 700, maxHeight: 840)
     }
 }
 
