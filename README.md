@@ -23,7 +23,7 @@
 
 ### Interactive Mode
 1.  Download the latest release or build from source.
-2.  Launch `Decouple.app`. The app asks for administrator privileges (macOS authorization prompt). Cancelling the prompt shows a **Try Again / Quit** screen; nothing runs without them.
+2.  Launch `Decouple.app`. The app asks for administrator privileges (macOS authorization prompt). Cancelling the prompt shows a **Try Again / Quit** screen (Try Again re-prompts); nothing runs without them.
 3.  The app will detect the current user and run pre-flight checks.
 4.  If the user is a Mobile account, the migration process will start automatically.
 5.  **Restart** the Mac when it finishes. This confirms the local password and the FileVault login still work.

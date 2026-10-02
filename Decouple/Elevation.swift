@@ -40,7 +40,8 @@ final class ElevationManager {
     private var process: Process?
 
     func start(arguments: [String]) {
-        guard state == .idle else { return }
+        // Retry is allowed after a failure; only block while a request is in flight.
+        guard state != .requesting, state != .handingOff else { return }
         if geteuid() == 0 {
             state = .handingOff // already root: nothing to elevate
             return
