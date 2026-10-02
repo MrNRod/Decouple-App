@@ -344,7 +344,8 @@ nonisolated enum FreshAccountProfile {
         adminNestedGroups: [String],
         staffMembers: [String],
         userName: String,
-        searchPaths: [String] = []
+        searchPaths: [String] = [],
+        inNetAccounts: Bool = false
     ) -> [Finding] {
         var findings: [Finding] = []
         func add(_ message: String) { findings.append(Finding(message: message)) }
@@ -378,6 +379,9 @@ nonisolated enum FreshAccountProfile {
         if !adminNestedGroups.isEmpty { add("The admin group still has nested (AD) groups.") }
         if staffMembers.contains(userName) {
             add("The user is listed in the staff group; on a fresh account only root is.")
+        }
+        if inNetAccounts {
+            add("The user is in netaccounts (network account); a fresh account is in localaccounts.")
         }
         if let home, home.exists {
             if let mode = home.mode, !HomeState.isStockMode(mode) {
@@ -474,12 +478,13 @@ nonisolated enum StepPlanner {
         userName: String,
         grantAdmin: Bool = false,
         adminMembers: [String] = [],
-        searchPaths: [String] = []
+        searchPaths: [String] = [],
+        inNetAccounts: Bool = false
     ) -> [StepAction] {
         let traces = FreshAccountProfile.findings(
             snapshot: snapshot, machineBound: machineBound, home: home,
             adminNestedGroups: adminNestedGroups, staffMembers: staffMembers, userName: userName,
-            searchPaths: searchPaths
+            searchPaths: searchPaths, inNetAccounts: inNetAccounts
         )
         guard !traces.isEmpty else { return [] }
 

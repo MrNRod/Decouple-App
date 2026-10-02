@@ -40,11 +40,13 @@ private func findings(
     home: HomeState? = cleanHome,
     nested: [String] = [],
     staff: [String] = ["root"],
-    searchPaths: [String] = []
+    searchPaths: [String] = [],
+    inNetAccounts: Bool = false
 ) -> [Finding] {
     FreshAccountProfile.findings(
         snapshot: snapshot, machineBound: bound, home: home,
-        adminNestedGroups: nested, staffMembers: staff, userName: "jdoe", searchPaths: searchPaths
+        adminNestedGroups: nested, staffMembers: staff, userName: "jdoe", searchPaths: searchPaths,
+        inNetAccounts: inNetAccounts
     )
 }
 
@@ -554,5 +556,21 @@ private func findings(
         #expect(account.adAttributeKeys.contains("dsAttrTypeStandard:AppleMetaRecordName"))
         #expect(findings(account).contains { $0.message.contains("AppleMetaRecordName") })
         #expect(try snapshot(freshLocal).adAttributeKeys.isEmpty)
+    }
+}
+
+// MARK: - Account classification
+
+@Suite struct ClassificationTests {
+    @Test func netAccountsMembershipIsFlaggedAndResolvedByRestart() throws {
+        let account = try snapshot(freshLocal)
+        #expect(findings(account, inNetAccounts: true).contains { $0.message.contains("netaccounts") })
+        #expect(findings(account).isEmpty)
+
+        // A half-migrated account that only kept the cached classification still gets a plan.
+        let steps = StepPlanner.plan(snapshot: account, machineBound: false, home: cleanHome,
+                                     adminNestedGroups: [], staffMembers: ["root"], userName: "jdoe",
+                                     inNetAccounts: true)
+        #expect(steps == [.verifyUserExists, .backupAccount, .restartDirectoryServices, .verifyAccount])
     }
 }

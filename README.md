@@ -97,7 +97,7 @@ If this key is set, the app will migrate the specified user instead of the user 
 
 ## How It Works
 
-1.  **Detection:** Reads the account record and compares it to a fresh local account: AD entries in `AuthenticationAuthority`, leftover AD attributes, domain aliases, group, home folder, and the bind state. Only the steps that are needed are run.
+1.  **Detection:** Reads the account record and compares it to a fresh local account: AD entries in `AuthenticationAuthority`, leftover AD attributes, domain aliases, primary group, shell, `_writers_` permissions, home folder (mode, ACL, `.CFUserTextEncoding`, groups that no longer resolve), the search path, the bind state, and the netaccounts/localaccounts classification. Only the steps that are needed are run.
 2.  **Backup:** Saves the account record before any change.
 3.  **Unbind:** Runs `dsconfigad -remove -force` and verifies it.
 4.  **Auth Authority Fix:** Removes only the AD entries. Aborts if the `SecureToken` or FileVault crypto-user entry disappears.

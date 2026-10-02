@@ -47,6 +47,14 @@ nonisolated enum AccountOperations {
         return record.values("CSPSearchPath")
     }
 
+    /// A network account is in netaccounts (membership is computed from the account's
+    /// AuthenticationAuthority); a fresh local account lands in localaccounts instead.
+    /// dseditgroup's output is "yes <user> is a member of <group>".
+    static func isInNetAccounts(_ user: String) -> Bool {
+        CommandRunner.run(Tool.dseditgroup, ["-o", "checkmember", "-m", user, "netaccounts"])
+            .output.lowercased().hasPrefix("yes")
+    }
+
     static func isMachineBound() -> Bool {
         CommandRunner.run(Tool.dsconfigad, ["-show"]).output.contains("Active Directory Domain")
     }
@@ -100,6 +108,7 @@ nonisolated enum AccountOperations {
         let staff = groupValues("staff", "GroupMembership")
         let admins = groupValues("admin", "GroupMembership")
         let paths = searchPaths()
+        let netAccounts = isInNetAccounts(user)
         let fileVault = fileVaultEnabled()
 
         let context = MigrationContext(
@@ -118,12 +127,14 @@ nonisolated enum AccountOperations {
             adminNestedGroups: nested, staffMembers: staff, context: context,
             findings: FreshAccountProfile.findings(
                 snapshot: snapshot, machineBound: bound, home: home,
-                adminNestedGroups: nested, staffMembers: staff, userName: user, searchPaths: paths
+                adminNestedGroups: nested, staffMembers: staff, userName: user, searchPaths: paths,
+                inNetAccounts: netAccounts
             ),
             plan: StepPlanner.plan(
                 snapshot: snapshot, machineBound: bound, home: home,
                 adminNestedGroups: nested, staffMembers: staff, userName: user,
-                grantAdmin: grantAdmin, adminMembers: admins, searchPaths: paths
+                grantAdmin: grantAdmin, adminMembers: admins, searchPaths: paths,
+                inNetAccounts: netAccounts
             )
         )
     }
@@ -448,7 +459,7 @@ nonisolated enum AccountOperations {
             snapshot: snapshot, machineBound: isMachineBound(), home: homeState(context.homeDirectory),
             adminNestedGroups: groupValues("admin", "NestedGroups"),
             staffMembers: groupValues("staff", "GroupMembership"), userName: context.user,
-            searchPaths: searchPaths()
+            searchPaths: searchPaths(), inNetAccounts: isInNetAccounts(context.user)
         )
         if findings.isEmpty { return .success("Matches a fresh local account") }
         return .warning(findings.map(\.message).joined(separator: " "))
