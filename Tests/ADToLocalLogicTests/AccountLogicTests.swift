@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ADToLocalLogic
+@testable import DecoupleLogic
 
 // Fixtures mirror what `dscl -plist . -read /Users/<name>` returns on macOS 14+.
 // GUIDs and hashes are made up.

@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  ADToLocal
+//  Decouple
 //
 //  Created by Noel Rodriguez-Lebron on 12/1/25.
 //
@@ -30,7 +30,7 @@ struct ContentView: View {
     private var mainContent: some View {
         VStack(spacing: 16) {
             VStack(spacing: 4) {
-                Text(viewModel.mode == .verifyOnly ? "AD to Local Verification" : "AD to Local Migration")
+                Text(viewModel.mode == .verifyOnly ? "Decouple — Verify" : "Decouple")
                     .font(.title2.bold())
                 Text("Target User: \(viewModel.user)")
                     .font(.headline)

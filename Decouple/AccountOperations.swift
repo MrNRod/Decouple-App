@@ -1,6 +1,6 @@
 //
 //  AccountOperations.swift
-//  ADToLocal
+//  Decouple
 //
 //  Everything that reads or changes the system. All calls block, so run them off the main actor.
 //  Decisions (what is AD, what to keep, which steps to run) live in AccountLogic.swift.
@@ -168,7 +168,7 @@ nonisolated enum AccountOperations {
     /// Restore point, written before anything is changed. The password hash is never included.
     private static func backupAccount(_ context: MigrationContext) -> StepOutcome {
         guard let snapshot = readSnapshot(user: context.user) else { return .failure("Could not read the account record.") }
-        let path = "/private/var/log/ad_to_local_backup_\(context.user)_\(Int(Date().timeIntervalSince1970)).plist"
+        let path = "/private/var/log/decouple_backup_\(context.user)_\(Int(Date().timeIntervalSince1970)).plist"
         let extra = [
             "user": context.user,
             "createdAt": Date().formatted(.iso8601),

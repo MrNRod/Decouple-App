@@ -1,6 +1,6 @@
-# AD to Local
+# Decouple
 
-**AD to Local** is a macOS utility designed to convert "Mobile" Active Directory accounts into standard "Local" accounts. It automates the complex process of unbinding the machine, stripping AD attributes, and fixing local permissions, ensuring the user account is completely severed from the domain while preserving their data.
+**Decouple** is a macOS utility designed to convert "Mobile" Active Directory accounts into standard "Local" accounts. It automates the complex process of unbinding the machine, stripping AD attributes, and fixing local permissions, ensuring the user account is completely severed from the domain while preserving their data.
 
 ## Features
 
@@ -23,7 +23,7 @@
 
 ### Interactive Mode
 1.  Download the latest release or build from source.
-2.  Launch `ADToLocal.app`.
+2.  Launch `Decouple.app`.
 3.  The app will detect the current user and run pre-flight checks.
 4.  If the user is a Mobile account, the migration process will start automatically.
 5.  **Restart** the Mac when it finishes. This confirms the local password and the FileVault login still work.
@@ -35,9 +35,11 @@
 | `--verify` | Read-only. Lists what differs from a fresh local account and changes nothing. Needs root to read another user's authentication data and home folder. |
 | `--no-autostart` | Analyzes and shows the plan, then waits for **Start Migration**. |
 
-**Files written** (root-only, `0600`): `/private/var/log/ad_to_local_migration.log` and `/private/var/log/ad_to_local_backup_<user>_<timestamp>.plist` (the account record before the change).
+**Files written** (root-only, `0600`): `/private/var/log/decouple.log` and `/private/var/log/decouple_backup_<user>_<timestamp>.plist` (the account record before the change).
 
 **UID:** the account keeps its UID. Mobile accounts often have a large AD-mapped UID, while a fresh local account gets 501 or higher. Keeping it means no file ownership changes.
+
+**Known limitation — Local KDC:** A fresh local account has a `Kerberosv5` entry for the Local KDC (LKDC), plus `KerberosKeys` and `HeimdalSRPKey`. A converted mobile account doesn't, because these are created by the LKDC when the password is set, and the mobile account's password was set by AD. The account works without them (login, FileVault, keychain all use the preserved `ShadowHash` and `SecureToken`). To add Kerberos single sign-on for local services, the user changes their password once in System Settings after the migration.
 
 ### MDM / Automated Deployment
 You can deploy this tool via any MDM (Workspace ONE,Jamf, Kandji, Mosyle, etc.).
@@ -51,7 +53,7 @@ Since this application interacts with protected system areas, you must deploy a 
 #### 2. Configuration Profile (Target User)
 You can use a Configuration Profile to target a specific user other than the currently logged-in one.
 
-**Preference Domain:** `com.mrnrod45.ADToLocal` (Default)
+**Preference Domain:** `com.mrnrod45.Decouple` (Default)
 *Note: If you change the Bundle Identifier in Xcode before compiling, ensure your Preference Domain matches your custom Bundle ID.*
 
 | Key | Type | Description |
@@ -65,7 +67,7 @@ You can use a Configuration Profile to target a specific user other than the cur
 <array>
     <dict>
         <key>PayloadIdentifier</key>
-        <string>com.mrnrod45.ADToLocal</string>
+        <string>com.mrnrod45.Decouple</string>
         <key>PayloadType</key>
         <string>com.apple.configuration.managed</string>
         <key>enrollmentUser</key>
@@ -95,7 +97,7 @@ If this key is set, the app will migrate the specified user instead of the user 
 
 ## Development
 
-The decision logic is in `ADToLocal/AccountLogic.swift` and has no system dependencies. Run its tests with `swift test`.
+The decision logic is in `Decouple/AccountLogic.swift` and has no system dependencies. Run its tests with `swift test`.
 
 ## Disclaimer
 

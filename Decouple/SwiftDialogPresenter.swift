@@ -1,6 +1,6 @@
 //
 //  SwiftDialogPresenter.swift
-//  ADToLocal
+//  Decouple
 //
 //  Optional front end: shows progress in swiftDialog instead of the SwiftUI window.
 //  swiftDialog is a separate, signed app that must be installed (it's a normal MDM package).

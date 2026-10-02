@@ -1,6 +1,6 @@
 //
 //  DialogCommands.swift
-//  ADToLocal
+//  Decouple
 //
 //  Formats swiftDialog command-file lines and launch arguments. Pure (Foundation only) so it can
 //  be unit tested. https://github.com/swiftDialog/swiftDialog

@@ -1,6 +1,6 @@
 //
 //  AccountLogic.swift
-//  ADToLocal
+//  Decouple
 //
 //  Pure, Foundation-only decision logic. Nothing in this file touches the
 //  system, so it can be unit tested with `swift test` (see Package.swift).
