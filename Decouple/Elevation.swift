@@ -98,6 +98,15 @@ final class ElevationManager {
     }
 }
 
+extension View {
+    /// One shared window box for every app state (elevation, prompt, content), so the
+    /// window is created at the ideal size and resizing stays in this range.
+    func decoupleWindowFrame() -> some View {
+        frame(minWidth: 480, idealWidth: 520, maxWidth: 680,
+              minHeight: 500, idealHeight: 560, maxHeight: 720)
+    }
+}
+
 /// Runs the app content only when the process is root. Otherwise it shows the
 /// authorization flow: a progress state while the prompt is up, and retry controls
 /// when the prompt was cancelled or the hand-off failed.
@@ -106,40 +115,43 @@ struct ElevationGate<Content: View>: View {
     @State private var elevation = ElevationManager()
 
     var body: some View {
-        if geteuid() == 0 || elevation.state == .handingOff {
-            content()
-        } else {
-            switch elevation.state {
-            case .idle:
-                // Starts elevation on first appearance (non-root sessions only).
-                Color.clear.frame(width: 1, height: 1)
-                    .onAppear { elevation.start(arguments: CommandLine.arguments) }
-            case .requesting:
-                ProgressView {
-                    Text("Requesting administrator privileges…")
-                }
-                .frame(width: 420, height: 240)
-            case .failed(let message):
-                VStack(spacing: 16) {
-                    Image(systemName: "lock.slash")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.red)
-                        .accessibilityHidden(true)
-                    Text(message)
-                        .font(.callout)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    HStack(spacing: 12) {
-                        Button("Quit") { NSApplication.shared.terminate(nil) }
-                        Button("Try Again") { elevation.start(arguments: CommandLine.arguments) }
-                            .buttonStyle(.borderedProminent)
-                            .keyboardShortcut(.defaultAction)
+        Group {
+            if geteuid() == 0 || elevation.state == .handingOff {
+                content()
+            } else {
+                switch elevation.state {
+                case .idle:
+                    // Starts elevation on first appearance (non-root sessions only).
+                    Color.clear
+                        .onAppear { elevation.start(arguments: CommandLine.arguments) }
+                case .requesting:
+                    ProgressView {
+                        Text("Requesting administrator privileges…")
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .failed(let message):
+                    VStack(spacing: 16) {
+                        Image(systemName: "lock.slash")
+                            .font(.system(size: 36))
+                            .foregroundStyle(.red)
+                            .accessibilityHidden(true)
+                        Text(message)
+                            .font(.callout)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        HStack(spacing: 12) {
+                            Button("Quit") { NSApplication.shared.terminate(nil) }
+                            Button("Try Again") { elevation.start(arguments: CommandLine.arguments) }
+                                .buttonStyle(.borderedProminent)
+                                .keyboardShortcut(.defaultAction)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .handingOff:
+                    Color.clear
                 }
-                .frame(width: 420, height: 240)
-            case .handingOff:
-                Color.clear.frame(width: 1, height: 1)
             }
         }
+        .decoupleWindowFrame()
     }
 }

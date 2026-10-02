@@ -28,15 +28,29 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 4) {
-                Text(viewModel.mode == .verifyOnly ? "Decouple — Verify" : "Decouple")
-                    .font(.title2.bold())
-                Text("Target User: \(viewModel.user)")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Target user:")
                     .foregroundStyle(.secondary)
+                Text(viewModel.user)
+                    .fontWeight(.medium)
+                    .textSelection(.enabled)
+                Spacer()
+                if viewModel.mode == .verifyOnly {
+                    Text("Verification only")
+                        .font(.subheadline)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(.quaternary.opacity(0.6), in: Capsule())
+                } else if viewModel.usesDialog {
+                    Text("swiftDialog UI")
+                        .font(.subheadline)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(.quaternary.opacity(0.6), in: Capsule())
+                }
             }
-            .padding(.top)
+            .font(.subheadline)
 
             if !viewModel.steps.isEmpty {
                 ProgressView(value: viewModel.progress)
@@ -56,14 +70,15 @@ struct ContentView: View {
                         .padding(6)
                 }
                 .frame(height: 150)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
             }
 
             footer
                 .padding(.bottom)
         }
         .padding()
-        .frame(minWidth: 500, idealWidth: 500, minHeight: 500, idealHeight: 500)
+        .decoupleWindowFrame()
         .background(WindowAccessor(isBusy: viewModel.isRunning))
         .confirmationDialog("Restart this Mac now?", isPresented: $confirmRestart) {
             Button("Restart Now", role: .destructive) { viewModel.restart() }
@@ -114,7 +129,11 @@ struct ContentView: View {
 
     private var footer: some View {
         HStack {
-            Button(showLog ? "Hide Log" : "Show Log") { withAnimation { showLog.toggle() } }
+            Button { withAnimation { showLog.toggle() } } label: {
+                Label(showLog ? "Hide Log" : "Show Log", systemImage: "text.justify.leading")
+            }
+            .help("Toggle the migration log")
+
             Spacer()
             switch viewModel.phase {
             case .analyzing:
@@ -125,7 +144,7 @@ struct ContentView: View {
                     .keyboardShortcut(.defaultAction)
             case .running:
                 ProgressView().controlSize(.small)
-                Text("Processing…").font(.caption)
+                Text("Migrating…").font(.caption).foregroundStyle(.secondary)
             case .completed:
                 Button("Restart Now") { confirmRestart = true }
                 closeButton
