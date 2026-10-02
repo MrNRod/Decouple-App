@@ -16,6 +16,7 @@
 ## Requirements
 
 *   **macOS:** 14.0 or later (tested on macOS 27).
+*   **Appearance:** follows the system theme. On macOS 26 and later the window renders with the system Liquid Glass design; earlier versions use the standard vibrancy materials.
 *   **Privileges:** Must be run as **root** (the app will automatically attempt to relaunch itself with `sudo` if opened normally).
 *   **Permissions:** **Full Disk Access (FDA)** is strictly required. The app needs to modify user home directories, system configuration files, and directory services which are protected by macOS TCC (Transparency, Consent, and Control).
 

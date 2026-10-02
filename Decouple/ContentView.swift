@@ -301,6 +301,37 @@ struct VerificationResultView: View {
     }
 }
 
+/// The macOS 26/27 window look: native windows sit on a vibrancy material that blends
+/// with the desktop. A plain SwiftUI WindowGroup paints flat windowBackgroundColor
+/// (#1E1E1E in dark mode), which reads much darker than every other window. This puts
+/// the standard behind-window material behind the whole interface.
+struct VibrantBackground: NSViewRepresentable {
+    // The .sidebar material is the lighter, desktop-blended vibrancy that native
+    // windows (System Settings, Finder, Notes) show. The .windowBackground material
+    // is defined to match the flat windowBackgroundColor (#1E1E1E in dark), so it
+    // changes nothing visually.
+    //
+    // Glass: on macOS 26 and later, NSVisualEffectView materials automatically render
+    // with the system Liquid Glass design (what the app shows on those versions); on
+    // macOS 14-25 the same code uses the classic vibrancy. No availability branches
+    // are needed - the SDK handles the restyling.
+    func makeNSView(context: Context) -> NSView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        view.isEmphasized = false
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let view = nsView as? NSVisualEffectView {
+            view.material = .sidebar
+            view.blendingMode = .behindWindow
+        }
+    }
+}
+
 struct WindowAccessor: NSViewRepresentable {
     /// While the migration runs the window can't be closed, and it stays above other windows.
     let isBusy: Bool
