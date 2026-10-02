@@ -104,7 +104,7 @@ extension View {
     /// Portrait proportions, like a standard macOS utility panel.
     func decoupleWindowFrame() -> some View {
         frame(minWidth: 460, idealWidth: 480, maxWidth: 520,
-              minHeight: 560, idealHeight: 640, maxHeight: 780)
+              minHeight: 600, idealHeight: 700, maxHeight: 840)
     }
 }
 
