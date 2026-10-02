@@ -7,7 +7,7 @@ let package = Package(
     name: "DecoupleLogic",
     platforms: [.macOS(.v14)],
     targets: [
-        .target(name: "DecoupleLogic", path: "Decouple", sources: ["AccountLogic.swift"]),
+        .target(name: "DecoupleLogic", path: "Decouple", sources: ["AccountLogic.swift", "DialogCommands.swift"]),
         .testTarget(name: "DecoupleLogicTests", dependencies: ["DecoupleLogic"])
     ],
     swiftLanguageModes: [.v5]

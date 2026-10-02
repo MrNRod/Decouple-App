@@ -70,6 +70,12 @@ nonisolated enum TargetAccount {
         return consoleUser()
     }
 
+    static func consoleUID() -> uid_t? {
+        var uid: uid_t = 0
+        guard SCDynamicStoreCopyConsoleUser(nil, &uid, nil) != nil, uid != 0 else { return nil }
+        return uid
+    }
+
     /// The user who is actually logged in at the console.
     /// After `relaunchAsRoot()` the process user is `root`, so `NSUserName()` can't be used.
     static func consoleUser() -> String {
