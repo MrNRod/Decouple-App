@@ -83,14 +83,12 @@ struct ContentView: View {
     private var logArea: some View {
         Group {
             if showLog {
-                GroupBox {
-                    ScrollView(showsIndicators: true) {
-                        Text(viewModel.log)
-                            .font(.system(.caption2, design: .monospaced))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                    }
+                ScrollView(showsIndicators: true) {
+                    Text(viewModel.log)
+                        .font(.system(.caption2, design: .monospaced))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
                 }
                 .frame(height: 170)
             }
@@ -285,19 +283,17 @@ struct VerificationResultView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                GroupBox {
-                    ScrollView(showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(findings, id: \.message) { finding in
-                                Label(finding.message, systemImage: "exclamationmark.triangle")
-                                    .font(.callout)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                ScrollView(showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(findings, id: \.message) { finding in
+                            Label(finding.message, systemImage: "exclamationmark.triangle")
+                                .font(.callout)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(.vertical, 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.vertical, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: .infinity)
             }
