@@ -72,6 +72,8 @@ You can use a Configuration Profile to target a specific user other than the cur
         <string>com.apple.configuration.managed</string>
         <key>enrollmentUser</key>
         <string>target_username</string>
+        <key>grantAdmin</key>
+        <true/>
     </dict>
 </array>
 ```
