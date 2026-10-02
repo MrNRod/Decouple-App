@@ -25,3 +25,7 @@ DerivedData/
 
 # CocoaPods
 Pods/
+
+# SwiftPM (test harness)
+.build/
+.swiftpm/
