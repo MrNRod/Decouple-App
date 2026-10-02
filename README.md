@@ -15,7 +15,7 @@
 
 ## Requirements
 
-*   **macOS:** 14.6 or later.
+*   **macOS:** 14.0 or later (tested on macOS 27).
 *   **Privileges:** Must be run as **root** (the app will automatically attempt to relaunch itself with `sudo` if opened normally).
 *   **Permissions:** **Full Disk Access (FDA)** is strictly required. The app needs to modify user home directories, system configuration files, and directory services which are protected by macOS TCC (Transparency, Consent, and Control).
 
@@ -68,6 +68,8 @@ You can use a Configuration Profile to target a specific user other than the cur
 | `grantAdmin` | Boolean | Optional. `true` adds the converted user to the `admin` group. Default `false`: like a fresh local account, the user is not an admin. Only applies when an account is actually converted. |
 | `verifyOnly` | Boolean | Optional. `true` runs the read-only comparison and changes nothing, like `--verify` and the script's `VerifyOnly=true`. Default `false`. |
 | `UseDialog` | Boolean | Optional. `true` shows progress in swiftDialog instead of the app window. Requires swiftDialog pre-installed; same as the script's `UseDialog`. Default `false`. |
+
+*Note on swiftDialog versions: swiftDialog v3 requires macOS 15 or later. On macOS 14 install [v2.5.6](https://github.com/swiftDialog/swiftDialog/releases/tag/v2.5.6) instead.*
 
 #### Example Mobileconfig Snippet:
 ```xml
