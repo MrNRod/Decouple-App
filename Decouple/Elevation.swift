@@ -154,5 +154,6 @@ struct ElevationGate<Content: View>: View {
             }
         }
         .decoupleWindowFrame()
+        .background(WindowAccessor(isBusy: false))
     }
 }

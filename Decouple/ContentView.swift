@@ -56,7 +56,7 @@ struct ContentView: View {
         }
     }
 
-    /// Form-style header: a small caption above the account name, mode chip trailing.
+    /// Form-style header: a small caption above the account name, mode label trailing.
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline) {
@@ -112,7 +112,7 @@ struct ContentView: View {
                 systemImage: "checkmark.shield",
                 description: Text("No Active Directory traces were found. Nothing to change.")
             )
-            .frame(maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .ready, .running:
             StepListView(steps: viewModel.steps)
         case .completed(let hasWarnings):
@@ -124,8 +124,9 @@ struct ContentView: View {
                         ? "Review the steps marked with a warning below."
                         : "\(viewModel.user) is now a local account. Restart to confirm the login still works.")
                 )
-                .frame(maxHeight: .infinity)
-                if hasWarnings { StepListView(steps: viewModel.steps) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // swiftDialog-style: the full step list with its checkmarks stays visible.
+                StepListView(steps: viewModel.steps)
             }
         case .verified:
             VerificationResultView(findings: viewModel.findings)
@@ -136,11 +137,13 @@ struct ContentView: View {
                     systemImage: "xmark.octagon",
                     description: Text(message)
                 )
-                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if !viewModel.steps.isEmpty { StepListView(steps: viewModel.steps) }
             }
         }
     }
+
+    // MARK: - Footer
 
     private var footer: some View {
         HStack(spacing: 12) {
@@ -265,32 +268,6 @@ struct StatusIndicator: View {
     }
 }
 
-struct StatusBanner: View {
-    let systemImage: String
-    let tint: Color
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 30))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            Text(title)
-                .font(.headline)
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 struct VerificationResultView: View {
     let findings: [Finding]
 
@@ -301,7 +278,7 @@ struct VerificationResultView: View {
                 systemImage: "checkmark.shield",
                 description: Text("No Active Directory traces were found.")
             )
-            .frame(maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 12) {
                 Text("\(findings.count) difference\(findings.count == 1 ? "" : "s") found. Nothing was changed.")
@@ -322,6 +299,7 @@ struct VerificationResultView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .frame(maxHeight: .infinity)
             }
         }
     }
