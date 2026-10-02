@@ -77,7 +77,7 @@ nonisolated enum TargetAccount {
     }
 
     /// The user who is actually logged in at the console.
-    /// After `relaunchAsRoot()` the process user is `root`, so `NSUserName()` can't be used.
+    /// After the admin relaunch the process user is `root`, so `NSUserName()` can't be used.
     static func consoleUser() -> String {
         if let name = SCDynamicStoreCopyConsoleUser(nil, nil, nil) as String?,
            !name.isEmpty, name != "root", name != "loginwindow" {
