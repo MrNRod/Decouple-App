@@ -75,8 +75,14 @@ nonisolated enum AppLog {
         lock.lock()
         defer { lock.unlock() }
         let url = URL(fileURLWithPath: path)
+        // World-readable like the script's /var/log/decouple.log, so an end user can
+        // read and send it to IT. Upgrades files created as 0600 by earlier versions.
         if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+            FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o644])
+        } else if let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+                  let permissions = attributes[.posixPermissions] as? NSNumber,
+                  permissions.int32Value != 0o644 {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
         }
         // Not root (verify mode, Xcode runs): the unified log above is still written.
         guard let handle = try? FileHandle(forWritingTo: url) else { return }

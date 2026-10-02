@@ -16,7 +16,13 @@ nonisolated final class SwiftDialogPresenter: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
 
-    init(commandFile: String = "/private/var/tmp/adtolocal_dialog.log") {
+    /// Same shape as the script's command file: /var/tmp/decouple_dialog_<user>_<pid>.log
+    /// (/private/var/tmp is the same location on macOS).
+    init(user: String) {
+        self.commandFile = "/var/tmp/decouple_dialog_\(user)_\(getpid()).log"
+    }
+
+    private init(commandFile: String) {
         self.commandFile = commandFile
     }
 
@@ -36,7 +42,11 @@ nonisolated final class SwiftDialogPresenter: @unchecked Sendable {
         }
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
-        task.terminationHandler = { _ in onExit() }
+        let file = commandFile
+        task.terminationHandler = { _ in
+            try? FileManager.default.removeItem(atPath: file)
+            onExit()
+        }
         do { try task.run() } catch { return false }
         lock.lock(); process = task; lock.unlock()
         return true

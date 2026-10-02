@@ -196,7 +196,7 @@ final class MigrationViewModel {
 
     private func openDialog(items: [String]) {
         guard dialog == nil else { return }
-        let presenter = SwiftDialogPresenter()
+        let presenter = SwiftDialogPresenter(user: user)
         let started = presenter.start(
             title: "AD to Local Migration",
             message: "Converting \(user) to a local account.\nDo not restart or power off this Mac.",

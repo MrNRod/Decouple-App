@@ -41,7 +41,7 @@ sudo /Applications/Decouple.app/Contents/MacOS/Decouple
 | `--verify` | Read-only. Lists what differs from a fresh local account and changes nothing. Needs root to read another user's authentication data and home folder. |
 | `--no-autostart` | Analyzes and shows the plan, then waits for **Start Migration**. |
 
-**Files written** (root-only, `0600`): `/private/var/log/decouple.log` and `/private/var/log/decouple_backup_<user>_<timestamp>.plist` (the account record before the change).
+**Files written:** the log at `/var/log/decouple.log` (world-readable, so an end user can send it to IT when support asks; the account record never contains password data), and the backup at `/var/log/decouple_backup_<user>_<timestamp>.plist` (root-only, `0600`).
 
 **UID:** the account keeps its UID. Mobile accounts often have a large AD-mapped UID, while a fresh local account gets 501 or higher. Keeping it means no file ownership changes.
 
