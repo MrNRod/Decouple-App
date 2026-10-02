@@ -41,7 +41,10 @@ final class MigrationViewModel {
     init(arguments: [String] = CommandLine.arguments) {
         user = TargetAccount.resolve()
         grantAdmin = UserDefaults.standard.bool(forKey: "grantAdmin")
-        mode = arguments.contains("--verify") ? .verifyOnly : .migrate
+        // The --verify flag and the verifyOnly preference do the same thing:
+        // the flag for interactive use, the key for MDM (like VerifyOnly=true in the script).
+        mode = (arguments.contains("--verify") || UserDefaults.standard.bool(forKey: "verifyOnly"))
+            ? .verifyOnly : .migrate
         autoStart = !arguments.contains("--no-autostart")
     }
 
