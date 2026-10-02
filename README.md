@@ -102,3 +102,8 @@ The decision logic is in `Decouple/AccountLogic.swift` and has no system depende
 ## Disclaimer
 
 **Use at your own risk.** This tool modifies sensitive user account attributes and directory services. While tested extensively, always ensure you have a backup of your data before running migration tools.
+
+
+## Related project
+
+This is also available as a standalone bash script: [decouple](https://gitlab.com/MrNRod/decouple). It has the same fresh-account behavior, works headless over MDM with no app installation, and supports swiftDialog progress (optional).
