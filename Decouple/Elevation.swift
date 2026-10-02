@@ -132,20 +132,20 @@ struct ElevationGate<Content: View>: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .failed(let message):
                     VStack(spacing: 16) {
-                        Image(systemName: "lock.slash")
-                            .font(.system(size: 36))
-                            .foregroundStyle(.red)
-                            .accessibilityHidden(true)
-                        Text(message)
-                            .font(.callout)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                        ContentUnavailableView {
+                            Label("Administrator Privileges Required", systemImage: "lock")
+                        } description: {
+                            Text(message)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxHeight: .infinity)
                         HStack(spacing: 12) {
                             Button("Quit") { NSApplication.shared.terminate(nil) }
                             Button("Try Again") { elevation.start(arguments: CommandLine.arguments) }
                                 .buttonStyle(.borderedProminent)
                                 .keyboardShortcut(.defaultAction)
                         }
+                        .padding(.bottom, 16)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .handingOff:

@@ -65,9 +65,13 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if viewModel.mode == .verifyOnly {
-                    modeChip("Verify only")
+                    Text("Verify only")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else if viewModel.usesDialog {
-                    modeChip("swiftDialog")
+                    Text("swiftDialog")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             Text(viewModel.user)
@@ -76,29 +80,19 @@ struct ContentView: View {
         }
     }
 
-    private func modeChip(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(.quaternary.opacity(0.6), in: Capsule())
-    }
-
     private var logArea: some View {
         Group {
             if showLog {
-                ScrollView(showsIndicators: true) {
-                    Text(viewModel.log)
-                        .font(.system(.caption2, design: .monospaced))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
+                GroupBox {
+                    ScrollView(showsIndicators: true) {
+                        Text(viewModel.log)
+                            .font(.system(.caption2, design: .monospaced))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
                 }
                 .frame(height: 170)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
-                .padding(.top, 4)
             }
         }
     }
@@ -113,37 +107,40 @@ struct ContentView: View {
                 .controlSize(.large)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .clean:
-            StatusBanner(
-                systemImage: "checkmark.shield.fill", tint: .green,
-                title: "Already a Local Account",
-                message: "No Active Directory traces were found.\nNothing to change."
+            ContentUnavailableView(
+                "Already a Local Account",
+                systemImage: "checkmark.shield",
+                description: Text("No Active Directory traces were found. Nothing to change.")
             )
             .frame(maxHeight: .infinity)
         case .ready, .running:
             StepListView(steps: viewModel.steps)
         case .completed(let hasWarnings):
-            VStack(spacing: 10) {
-                StatusBanner(
-                    systemImage: hasWarnings ? "exclamationmark.triangle.fill" : "checkmark.shield.fill",
-                    tint: hasWarnings ? .orange : .green,
-                    title: hasWarnings ? "Completed With Warnings" : "Migration Successful",
-                    message: hasWarnings
+            VStack(spacing: 12) {
+                ContentUnavailableView(
+                    hasWarnings ? "Completed With Warnings" : "Migration Successful",
+                    systemImage: hasWarnings ? "exclamationmark.triangle" : "checkmark.shield",
+                    description: Text(hasWarnings
                         ? "Review the steps marked with a warning below."
-                        : "\(viewModel.user) is now a local account.\nRestart to confirm the login still works."
+                        : "\(viewModel.user) is now a local account. Restart to confirm the login still works.")
                 )
-                StepListView(steps: viewModel.steps)
+                .frame(maxHeight: .infinity)
+                if hasWarnings { StepListView(steps: viewModel.steps) }
             }
         case .verified:
             VerificationResultView(findings: viewModel.findings)
         case .failed(let message):
-            VStack(spacing: 10) {
-                StatusBanner(systemImage: "xmark.octagon.fill", tint: .red, title: "Migration Failed", message: message)
+            VStack(spacing: 12) {
+                ContentUnavailableView(
+                    "Migration Failed",
+                    systemImage: "xmark.octagon",
+                    description: Text(message)
+                )
+                .frame(maxHeight: .infinity)
                 if !viewModel.steps.isEmpty { StepListView(steps: viewModel.steps) }
             }
         }
     }
-
-    // MARK: - Footer
 
     private var footer: some View {
         HStack(spacing: 12) {
@@ -299,30 +296,31 @@ struct VerificationResultView: View {
 
     var body: some View {
         if findings.isEmpty {
-            StatusBanner(
-                systemImage: "checkmark.shield.fill", tint: .green,
-                title: "Matches a Fresh Local Account",
-                message: "No Active Directory traces were found."
+            ContentUnavailableView(
+                "Matches a Fresh Local Account",
+                systemImage: "checkmark.shield",
+                description: Text("No Active Directory traces were found.")
             )
             .frame(maxHeight: .infinity)
         } else {
-            VStack(spacing: 10) {
-                StatusBanner(
-                    systemImage: "exclamationmark.triangle.fill", tint: .orange,
-                    title: "\(findings.count) Difference\(findings.count == 1 ? "" : "s") Found",
-                    message: "Nothing was changed."
-                )
-                ScrollView(showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(findings, id: \.message) { finding in
-                            Label(finding.message, systemImage: "exclamationmark.triangle.fill")
-                                .font(.callout)
-                                .symbolRenderingMode(.multicolor)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(spacing: 12) {
+                Text("\(findings.count) difference\(findings.count == 1 ? "" : "s") found. Nothing was changed.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                GroupBox {
+                    ScrollView(showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(findings, id: \.message) { finding in
+                                Label(finding.message, systemImage: "exclamationmark.triangle")
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
+                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.vertical, 2)
                 }
             }
         }
@@ -334,22 +332,35 @@ struct WindowAccessor: NSViewRepresentable {
     let isBusy: Bool
     var isHidden = false
 
+    final class Coordinator {
+        var centeredWindow: NSWindow?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async { configure(view.window) }
+        DispatchQueue.main.async { configure(view.window, context.coordinator) }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        configure(nsView.window)
+        configure(nsView.window, context.coordinator)
     }
 
-    private func configure(_ window: NSWindow?) {
+    private func configure(_ window: NSWindow?, _ coordinator: Coordinator) {
         if isHidden {
             window?.orderOut(nil)
             return
         }
         window?.level = .floating
+        // State restoration saves frames across the elevating relaunch and puts the
+        // window wherever the old session left it. Don't save, and center each new window.
+        if window !== coordinator.centeredWindow, let window {
+            window.setFrameAutosaveName("")
+            window.center()
+            coordinator.centeredWindow = window
+        }
         window?.standardWindowButton(.closeButton)?.isEnabled = !isBusy
     }
 }
