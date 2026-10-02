@@ -38,14 +38,13 @@ struct ContentView: View {
                     .accessibilityLabel("Migration progress")
             }
 
-            Divider()
             content
             logArea
 
-            Divider()
+            Spacer(minLength: 4)
             footer
         }
-        .padding()
+        .padding(16)
         .decoupleWindowFrame()
         .background(WindowAccessor(isBusy: viewModel.isRunning))
         .confirmationDialog("Restart this Mac now?", isPresented: $confirmRestart) {
@@ -92,7 +91,7 @@ struct ContentView: View {
                             .textSelection(.enabled)
                     }
                 }
-                .frame(height: 170)
+                .frame(height: 150)
             }
         }
     }
@@ -107,19 +106,18 @@ struct ContentView: View {
                 .controlSize(.large)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .clean:
-            ContentUnavailableView(
-                "Already a Local Account",
-                systemImage: "checkmark.shield",
+            statusView(
+                icon: "checkmark.shield", tint: .green, title: "Already a Local Account",
                 description: Text("No Active Directory traces were found. Nothing to change.")
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .ready, .running:
             StepListView(steps: viewModel.steps)
         case .completed(let hasWarnings):
             VStack(spacing: 12) {
-                ContentUnavailableView(
-                    hasWarnings ? "Completed With Warnings" : "Migration Successful",
-                    systemImage: hasWarnings ? "exclamationmark.triangle" : "checkmark.shield",
+                statusView(
+                    icon: hasWarnings ? "exclamationmark.triangle" : "checkmark.shield",
+                    tint: hasWarnings ? .orange : .green,
+                    title: hasWarnings ? "Completed With Warnings" : "Migration Successful",
                     description: Text(hasWarnings
                         ? "Review the steps marked with a warning below."
                         : "\(viewModel.user) is now a local account. Restart to confirm the login still works.")
@@ -132,9 +130,8 @@ struct ContentView: View {
             VerificationResultView(findings: viewModel.findings)
         case .failed(let message):
             VStack(spacing: 12) {
-                ContentUnavailableView(
-                    "Migration Failed",
-                    systemImage: "xmark.octagon",
+                statusView(
+                    icon: "xmark.octagon", tint: .red, title: "Migration Failed",
                     description: Text(message)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -268,14 +265,31 @@ struct StatusIndicator: View {
     }
 }
 
+/// Native ContentUnavailableView with a semantic-colored icon in its label slot;
+/// title and description keep the standard system typography.
+private func statusView(
+    icon: String, tint: Color, title: String, description: Text
+) -> some View {
+    ContentUnavailableView {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+                .symbolRenderingMode(.hierarchical)
+        }
+    } description: {
+        description
+    }
+}
+
 struct VerificationResultView: View {
     let findings: [Finding]
 
     var body: some View {
         if findings.isEmpty {
-            ContentUnavailableView(
-                "Matches a Fresh Local Account",
-                systemImage: "checkmark.shield",
+            statusView(
+                icon: "checkmark.shield", tint: .green, title: "Matches a Fresh Local Account",
                 description: Text("No Active Directory traces were found.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
