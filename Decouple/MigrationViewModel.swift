@@ -28,7 +28,7 @@ final class MigrationViewModel {
     let user: String
     let mode: Mode
     let autoStart: Bool
-    /// Shows progress in swiftDialog instead of the SwiftUI window. Opt-in via the UseDialog
+    /// Shows progress in swiftDialog instead of the SwiftUI window. Opt-in via the useDialog
     /// preference (same as the script); only works when swiftDialog is installed.
     let usesDialog: Bool
     /// The `grantAdmin` managed preference. Off unless the profile turns it on.
@@ -47,11 +47,11 @@ final class MigrationViewModel {
         user = TargetAccount.resolve()
         grantAdmin = UserDefaults.standard.bool(forKey: "grantAdmin")
         // The --verify flag and the verifyOnly preference do the same thing:
-        // the flag for interactive use, the key for MDM (like VerifyOnly=true in the script).
+        // the flag for interactive use, the key for MDM (like verifyOnly=true in the script).
         mode = (arguments.contains("--verify") || UserDefaults.standard.bool(forKey: "verifyOnly"))
             ? .verifyOnly : .migrate
         // Same key as the script. Dialog is an optional backup UI; the native window is default.
-        usesDialog = UserDefaults.standard.bool(forKey: "UseDialog") && SwiftDialogPresenter.isInstalled
+        usesDialog = UserDefaults.standard.bool(forKey: "useDialog") && SwiftDialogPresenter.isInstalled
         // The dialog has no start button, so it always runs straight through.
         autoStart = usesDialog || !arguments.contains("--no-autostart")
     }

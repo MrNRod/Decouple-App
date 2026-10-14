@@ -65,7 +65,7 @@ nonisolated enum CommandRunner {
 nonisolated enum AppLog {
     static let path = "/private/var/log/decouple.log"
 
-    private static let logger = Logger(subsystem: "com.mrnrod45.Decouple", category: "migration")
+    private static let logger = Logger(subsystem: "com.mrnrod.Decouple", category: "migration")
     private static let lock = NSLock()
 
     static func write(_ message: String) {

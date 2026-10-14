@@ -60,15 +60,15 @@ Since this application interacts with protected system areas, you must deploy a 
 #### 2. Configuration Profile (Target User)
 You can use a Configuration Profile to target a specific user other than the currently logged-in one.
 
-**Preference Domain:** `com.mrnrod45.Decouple` (Default)
+**Preference Domain:** `com.mrnrod.Decouple` (Default)
 *Note: If you change the Bundle Identifier in Xcode before compiling, ensure your Preference Domain matches your custom Bundle ID.*
 
 | Key | Type | Description |
 | :--- | :--- | :--- |
 | `enrollmentUser` | String | The short username of the account to migrate. **Recommended:** Use your MDM's variable (e.g., `{EnrollmentUser}`). |
 | `grantAdmin` | Boolean | Optional. `true` adds the converted user to the `admin` group. Default `false`: like a fresh local account, the user is not an admin. Only applies when an account is actually converted. |
-| `verifyOnly` | Boolean | Optional. `true` runs the read-only comparison and changes nothing, like `--verify` and the script's `VerifyOnly=true`. Default `false`. |
-| `UseDialog` | Boolean | Optional. `true` shows progress in swiftDialog instead of the app window. Requires swiftDialog pre-installed; same as the script's `UseDialog`. Default `false`. |
+| `verifyOnly` | Boolean | Optional. `true` runs the read-only comparison and changes nothing, like `--verify` and the script's `verifyOnly=true`. Default `false`. |
+| `useDialog` | Boolean | Optional. `true` shows progress in swiftDialog instead of the app window. Requires swiftDialog pre-installed; same as the script's `useDialog`. Default `false`. |
 
 *Note on swiftDialog versions: swiftDialog v3 requires macOS 15 or later. On macOS 14 install [v2.5.6](https://github.com/swiftDialog/swiftDialog/releases/tag/v2.5.6) instead.*
 
@@ -78,7 +78,7 @@ You can use a Configuration Profile to target a specific user other than the cur
 <array>
     <dict>
         <key>PayloadIdentifier</key>
-        <string>com.mrnrod45.Decouple</string>
+        <string>com.mrnrod.Decouple</string>
         <key>PayloadType</key>
         <string>com.apple.configuration.managed</string>
         <key>enrollmentUser</key>
@@ -119,4 +119,4 @@ The decision logic is in `Decouple/AccountLogic.swift` and has no system depende
 
 ## Related project
 
-This is also available as a standalone bash script: [decouple](https://gitlab.com/MrNRod/decouple). It has the same fresh-account behavior, works headless over MDM with no app installation, and supports swiftDialog progress (optional).
+This is also available as a standalone bash script: [decouple](https://github.com/MrNRod/decouple). It has the same fresh-account behavior, works headless over MDM with no app installation, and supports swiftDialog progress (optional).
